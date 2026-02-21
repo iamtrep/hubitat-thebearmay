@@ -108,7 +108,7 @@ def mainPage(){
                     else
                         state.numberDevices+=2
                 }*/
-                if (state?.numberDevices > 0){
+                if(getChildDevices().size() > 0){
                     def chdList = []
                     getChildDevices().each{
                         chdList.add("$it")
@@ -122,7 +122,7 @@ def mainPage(){
                         }
                         app.updateSetting("removeChild",[value:null,type:"enum"])
                     }
-                    
+
                 }
             }
 
@@ -218,6 +218,10 @@ def getApi(resp, data){
                     def end = data.cmd.indexOf('/',start)
                     def devId = data.cmd.substring(start,end)
                     def cd = getChildDevice("${app.id}-$devId")
+                    if(cd == null) {
+                        log.error "getApi - no child device found for id $devId, was it deleted outside the app?"
+                        return
+                    }
                     def jsonData = (HashMap) resp.json
                     cd.dataRefresh(jsonData)
                 } else {
@@ -225,7 +229,7 @@ def getApi(resp, data){
                 }
             }
         } else if(resp.getStatus() == 401) {
-            apiGet("${data.cmd}")
+            log.error "getApi - 401 Unauthorized for ${data.cmd}, check API credentials"
         }
     } catch (Exception e) {
         log.error "getApi - $e.message"        
