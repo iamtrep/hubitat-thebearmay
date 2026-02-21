@@ -26,12 +26,11 @@
  *	  10Jul2025	  thebearmay	Additional fields
  *	  11Jul2025					Add Driver Name
  *	  08Dec2025	  				Add a CSV/JSON display/download endpoints
- *	  12Dec2025					Code Cleanup
 */
 
 import java.text.SimpleDateFormat
 import java.net.URLEncoder
-static String version()	{  return '1.3.8'  }
+static String version()	{  return '1.3.7'  }
 
 
 definition (
@@ -92,6 +91,8 @@ void logsOff(){
 def mainPage(){
     dynamicPage (name: "mainPage", title: "", install: true, uninstall: true) {
       	if (app.getInstallationState() == 'COMPLETE') {   
+//	    	section("Main")
+//		    {
               section("Selection Criteria", hideable: true, hidden: true){
                 input "qryDevice", "capability.*", title: "Devices of Interest:", multiple: true, required: true, submitOnChange: true
                 if (qryDevice != null) {
@@ -121,6 +122,7 @@ def mainPage(){
                 paragraph "<b>Cloud Request Formats: </b><br>${getFullApiServerUrl()}/csvDisp?access_token=${state.accessToken}<br>${getFullApiServerUrl()}/jsonDisp?access_token=${state.accessToken}<br>${getFullApiServerUrl()}/csvDown?access_token=${state.accessToken}<br>${getFullApiServerUrl()}/jsonDown?access_token=${state.accessToken}"
                 paragraph "<b>Local Request Formats: </b><br>${getFullLocalApiServerUrl()}/csvDisp?access_token=${state.accessToken}<br>${getFullLocalApiServerUrl()}/jsonDisp?access_token=${state.accessToken}<br>${getFullLocalApiServerUrl()}/csvDown?access_token=${state.accessToken}<br>${getFullLocalApiServerUrl()}/jsonDown?access_token=${state.accessToken}"
               }
+//		    }
 	    } else {
               section("Change Application Name", hideable: true, hidden: true){
                input "nameOverride", "text", title: "New Name for Application", multiple: false, required: false, submitOnChange: true, defaultValue: app.getLabel()
@@ -268,7 +270,7 @@ def jsonDown(){
   }
 }
 
-String buildJson(){
+def buildJson(){
 	jData = "["
 	qryDevice.sort({m1, m2 -> m1.displayName <=> m2.displayName})
 	qryDevice.each{ x->
@@ -309,7 +311,7 @@ def jsonDisp(){
 }
 
 def jsonEpDown(){
-	jData = buildJson()
+	jData = buildJson()//.getBytes("UTF-8")
     tNow=new Date()
     fName = "${toCamelCase(location.hub.name)}Json${new Date().getTime()}.json"
 
@@ -321,6 +323,7 @@ def jsonEpDown(){
         data:jData,
 		status:200
     ]
+    //log.debug "$contentBlock"
     render(contentBlock)
 }
 
@@ -337,9 +340,9 @@ def csvDown(){
 
 def csvDisp(){
 	contentBlock = [
-		contentType: "text/plain",
+		contentType: "text/csv",
 		gzipContent: true,
-		data: buildCsv(),
+		data: buildCsv(),//.replace("\n","<br>"),
 		status:200
 	]
     if(debugEnabled)
@@ -363,7 +366,7 @@ def csvEpDown(){
     render(contentBlock)
 }
 
-String buildCsv(){
+def buildCsv(){
 	jData="\"id\",\"displayName\",\"name\""
     varList.each { jData += ",\"$it\"" }
 	stList.each { jData += ",\"$it\"" }

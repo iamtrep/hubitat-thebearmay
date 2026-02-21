@@ -343,6 +343,54 @@
       "tags":[
         "Lights & Switches"
        ]
+    },
+    {
+      "id":"cc60b61f-0bda-4c83-a19d-5ce589ce6202",
+      "name":"App and Device ID Logger",
+      "category":"Utility",
+      "location":"https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/manifests/appDevIdManifest.json",
+      "description":"App and Device ID Logger. Application creates and updates a log of all app and device IDs and retains their entries after the app/device is removed; this allows for a quick lookup that can be used to trace the 'Hub received a request for an unknown app' messages. "
+    },
+    {
+      "id":"cb995e0b-8a94-43d0-a888-7ffdb7f8484f",
+      "name":"Rules Referencing Rules ",
+      "category":"Utility",
+      "location":"https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/manifests/ruleRruleManifest.json",
+      "description":"Rules References Rules Table.  App generates 2 cross reference tables of Rule Machine Rules that reference other rules.  These views allow one to quickly identify a rule that calls other rules, or all of the rules that a specific rule is referenced in."
+    },
+    {
+      "id":"4079be7f-a66d-4fea-bca8-6027ceb18ada",
+      "name":"Hub Detailed Information Display",
+      "category":"Utility",
+      "location":"https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/manifests/hubInfoDispManifest.json",
+      "description":"Hub Detailed Information Display - An app to combine the Hub Details page with information collected by the Hub Information Driver v3"
+    },
+    {
+      "id":"593eb15c-367e-4987-b47b-817a5f00757d",
+      "name":"Lock History",
+      "category":"Utility",
+      "location":"https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/manifests/lockHistManifest.json",
+      "description":"Displays lock use history and allows the use of alternate names for lock codes (useful for fingerprint devices that report unknown) and lock device names"
+    },
+    {
+      "id":"da4f6cac-1522-4e1c-8ebb-e21d22a1bf79",
+      "name":"File Manager Notepad",
+      "category":"Utility",
+      "location":"https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/manifests/fmNotepadManifest.json",
+      "description":"Allows the creation and editting of small text files inside of File Manager",
+      "tags":[
+        "Tools & Utilities"
+       ]
+    },
+    {
+      "id":"20d2f9d5-0f56-45f7-b738-b4f94dc8aafa",
+      "name":"Shade Minder",
+      "category":"Utility",
+      "location":"https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/manifests/shadeMinderManifest.json",
+      "description":"Automates shade opening and closing based on luminance/lux, or schedule.  Also monitors windSpeed/windGust attributes to close/open (depending on type) when exceeded.",
+      "tags":[
+        "Tools & Utilities"
+       ]
     }
   ]
 }

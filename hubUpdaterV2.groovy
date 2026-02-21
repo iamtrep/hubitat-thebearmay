@@ -19,13 +19,16 @@
  *    09Aug2024                  v2.0.7 update msg to show current HE version at initialize (5min delay)
  *    06Nov2024					 v2.0.8 add "Switch" capability to enable HomeKit usage
  *    21Nov2024                  v2.0.9 add capability to use a list of hubs for updates
+ *	  19Aug2025					 v2.0.10 add delayed update option
+ *								 v2.0.11 add a preference for update time that could be used instead of the command
  *
  */
 import groovy.transform.Field
 import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
+import java.time.*
 
-static String version()	{  return '2.0.8'  }
+static String version()	{  return '2.0.10'}
 
 metadata {
     definition (
@@ -47,7 +50,9 @@ metadata {
         command "sendTestMsg"
         command "subscribe",[[type:"string",description:"IP of Publisher Hub"]]
         command "unsubscribe"
-        command "updateHubList",[[type:"string",description:"Comma separated list of hubs to update"]]    
+        command "updateHubList",[[type:"string",description:"Comma separated list of hubs to update"]]
+        command "delayedUpdate",[[type:"string",description:"Delay update until this time", defaultValue:"02:00"]]
+        command "clearScheduledUpdate"
     }   
 }
 
@@ -55,6 +60,7 @@ preferences {
     input("termsAccepted","bool",title: "By using this driver you are agreeing to the <a href='https://hubitat.com/terms-of-service'>Hubitat Terms of Service</a>",required:true)
     input("updMesh","bool", title: "Push Update Request to All HubMeshed Hubs")
     input("useHubList","bool",title: "Push Update Request using Hub List Attribute")
+    input("updateTime","string",title: "Delay updates until this time (will override Delayed Update command)")
     input("debugEnabled", "bool", title: "Enable debug logging?", width:4)
 }
 
@@ -97,6 +103,53 @@ void updateHubList(hList){
     updateAttr("hubList",hList.replace(" ",""))
 }
 
+void delayedUpdate(dTime='02:00'){
+    if(dTime.indexOf('a') < 0 && dTime.indexOf('p') < 0){
+	    if(dTime.indexOf(':') < 0 && dTime.size() >= 4) {
+    		dTime = "${dTime.substring(0,2)}:${dTime.substring(2,)}"
+        } else if(dTime.indexOf(':') < 0 && dTime.size() >= 3) {
+    		dTime = "0${dTime.substring(0,1)}:${dTime.substring(1,)}"
+        }
+    } else {
+	    if(dTime.indexOf(':') < 0 && dTime.size() >= 5) {
+    		dTime = "${dTime.substring(0,2)}:${dTime.substring(2,)}"
+        } else if(dTime.indexOf(':') < 0 && dTime.size() >= 4) {
+    		dTime = "0${dTime.substring(0,1)}:${dTime.substring(1,)}"
+        }
+    }
+
+    if(dTime.indexOf('a') > 0){
+        if(dTime.substring(0,2) == '12')
+        dTime = "00${dTime.substring(2,)}"
+    	dTime = dTime.substring(0,dTime.indexOf('a'))
+    }
+
+    
+    if(dTime.indexOf('p') > 0) {
+    	dTime = dTime.substring(0,dTime.indexOf('p')-1)
+        wHr = dTime.substring(0,dTime.indexOf(':')).toInteger()
+        if(wHr != 12) 
+        	wHr += 12
+        dTime = "$wHr${dTime.substring(dTime.indexOf(':'))}"
+    }
+                                
+    if(dTime.indexOf(':') != 2) 
+    	dTime = "0$dTime"
+               
+    LocalTime tNow = LocalTime.now()
+    LocalTime tDelay = LocalTime.parse(dTime.trim())
+    int secDelay = Duration.between(tNow, tDelay).toSeconds()
+    if(secDelay < 0)
+    	secDelay = secDelay+(24*60*60)
+    
+	runIn(secDelay, "push")   
+}
+
+void clearScheduledUpdate(){
+    unschedule()
+    state.pending = 'false'
+}
+
 def on(){
     push()
     updateAttr("switch","on")
@@ -108,18 +161,24 @@ def off(){
 }
 
 def push(){
-    log.info "Firmware Update Requested"
-    if(!termsAccepted) {
-        updateAttr("msg", "Please accept terms and conditions first")
-        return
-    }    
-    updateAttr ("msg", "Update Requested at ${new Date()}")
-    params = [
-        uri: "http://127.0.0.1:8080",
-        path:"/hub/cloud/checkForUpdate",
-        timeout: 10
-    ]
-    asynchttpGet("getUpdateCheck", params)    
+    if(updateTime && state.pending != 'true') {
+        delayedUpdate(updateTime)
+        state.pending = 'true'
+    } else {
+        state.pending = 'false'
+	    log.info "Firmware Update Requested"
+    	if(!termsAccepted) {
+        	updateAttr("msg", "Please accept terms and conditions first")
+        	return
+    	}    
+    	updateAttr ("msg", "Update Requested at ${new Date()}")
+    	params = [
+        	uri: "http://127.0.0.1:8080",
+        	path:"/hub/cloud/checkForUpdate",
+        	timeout: 10
+    	]
+    	asynchttpGet("getUpdateCheck", params)    
+    }
 }
 
 void getUpdateCheck(resp, data) {

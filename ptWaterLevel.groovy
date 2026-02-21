@@ -18,12 +18,13 @@
  *    13Jan2022    thebearmay    Add html attribute
  *    14Jan2022    thebearmay    Option to use factory zero instead of observed
  *    21Feb2022    thebearmay    Update values on hub restart
+ *	  13Jan2026					 Strip out Hub Security, address 408 issue and look at potential JDK incapabilities
 */
 import java.text.SimpleDateFormat
 import groovy.json.JsonSlurper
 
 @SuppressWarnings('unused')
-static String version() {return "0.1.5"}
+static String version() {return "0.1.10"}
 
 metadata {
     definition (
@@ -35,6 +36,7 @@ metadata {
         capability "Actuator"
         capability "Configuration"
         capability "Initialize"
+        capability "Refresh"
         attribute "tx1", "number"
         attribute "tx1z", "number"
         attribute "tx2", "decimal"
@@ -43,7 +45,6 @@ metadata {
         attribute "fillPct", "number"
         attribute "compLiquid", "number"
         attribute "html", "string"
-//        command "forceCompute"
     }   
 }
 
@@ -55,12 +56,8 @@ preferences {
     input("tankCap", "number", title: "Tank Capacity", submitOnChange: true)
     input("volumeUnit", "text", title: "Unit for Volume, i.e. <i>G</i>allons, <i>L</i>iters, etc.", submitOnChange:true)
     input("factoryZero", "bool", title: "Use Factory Zero instead of Observed", defaultValue: false, submitOnChange: true)
-    input("security", "bool", title: "Hub Security Enabled?", defaultValue: false, submitOnChange: true)
-    if (security) { 
-        input("username", "string", title: "Hub Security Username", required: false)
-        input("password", "password", title: "Hub Security Password", required: false)
-    }
-    input("debugEnable", "bool", title: "Enable debug logging?")
+	input("debugEnable", "bool", title: "Enable debug logging?")
+    input("warnSuppress", "bool", title: "Suppress Warnings?")
 }
 
 @SuppressWarnings('unused')
@@ -99,28 +96,16 @@ void updateAttr(String aKey, aValue, String aUnit = ""){
     sendEvent(name:aKey, value:aValue, unit:aUnit)
 }
 
-void getPollValues(){
-    // start - Modified from dman2306 Rebooter app
-    String cookie=(String)null
-    if(security) {
-        httpPost(
-            [
-                uri: "http://127.0.0.1:8080",
-                path: "/login",
-                query: [ loginRedirect: "/" ],
-                body: [
-                    username: username,
-                    password: password,
-                    submit: "Login"
-                ]
-            ]
-        ) { resp -> cookie = ((List)((String)resp?.headers?.'Set-Cookie')?.split(';'))?.getAt(0) }
-    }
-    // End - Modified from dman2306 Rebooter app
+void refresh() {
+    getPollValues()
+}
 
+void getPollValues(){
     Map params = [
         uri    : serverAddr,
-        headers: ["Cookie": cookie]
+        headers: [
+        	"Connection-Timeout":600
+        ]
     ]
     if (debugEnable) log.debug params
     asynchttpGet("getPTData", params)
@@ -135,25 +120,36 @@ void getPollValues(){
         runIn(tempPollRate,"getPollValues")
     }
 }
-//{"free_space":"667648","rx_id":"227","tx_id":"50","tx_rssi":"-71","rx_rssi":"-59","firmware_version":"212","hardware_version":"4","id":"483FDA91E94F","ip":"10.54.25.254","subnet":"255.255.255.0","gateway":"10.54.25.1","dns":"unknown","tx_firmware_version":"7","tx_hardware_version":"5","fails":"3","rx_sensors":"[]","tx_sensors":"[{"1":366,"z":58},{"2":6.16},{"3":-15.01}]"}
 
 @SuppressWarnings('unused')
 void getPTData(resp, data){
+    if(debugEnable) log.debug "getPTData"
+    //String simString = '{"free_space":"667648","rx_id":"227","tx_id":"50","tx_rssi":"-71","rx_rssi":"-59","firmware_version":"212","hardware_version":"4","id":"483FDA91E94F","ip":"10.54.25.254","subnet":"255.255.255.0","gateway":"10.54.25.1","dns":"unknown","tx_firmware_version":"7","tx_hardware_version":"5","fails":"3","rx_sensors":"[]","tx_sensors":"[{"1":359,"z":58},{"2":6.16},{"3":-15.01}]"}'
     try{
-        if (resp.getStatus() == 200){
+        if (resp.getStatus() == 200 || simString){
             if (debugEnable) log.info resp.data
-            dataIn = resp.data.toString()
+            if(simString) 
+            	dataIn = simString
+            else
+            	dataIn = resp.data.toString()
             focusData = dataIn.substring(dataIn.indexOf('"tx_sensors":"')+14,dataIn.length()-2)
             focusData = focusData.replace("{","")
             focusData = focusData.replace("}","")
-            updateAttr("debug",focusData)
-            HashMap retData=(HashMap)evaluate(focusData)
-            updateAttr("tx1",retData['1'])
-            updateAttr("tx1z",retData['z'])
-            updateAttr("tx2",retData['2'])
-            updateAttr("tx3",retData['3'])
+            focusData = focusData.replace("]","")
+            focusData = focusData.replace("[","")
+            focusData = focusData.replace("\"","")
+            focusData = focusData.replace("\\","")
+            fdSplit = focusData.split(",")
+            //updateAttr("debug1","$focusData")
+            //updateAttr("debug",fdSplit)
+            fdSplit.each {
+                items=it.split(":")
+                if(items[0] == 'z')
+                	updateAttr("tx1z","${items[1]}")
+                else
+                    updateAttr("tx${items[0]}","${items[1]}")
+            }
             computeValues()
-            buildHtml()
         } else {
             if (!warnSuppress) log.warn "Status ${resp.getStatus()} while fetching IP"
         } 
@@ -162,36 +158,33 @@ void getPTData(resp, data){
     }
 }   
 
-/*void forceCompute() {
-    updateAttr("tx1", 430)
-    updateAttr("tx2", 5.95)
-    updateAttr("tx1z", 58)
-    computeValues()
-    buildHtml()
-}*/
-
 @SuppressWarnings('unused')
 void computeValues() {
-    if((obsFull && obsEmpty) || (obsFull && factoryZero)){
-        if(factoryZero) zValue = device.currentValue("tx1z", true).toInteger()
-        else zValue =  obsEmpty
-        Integer fillPct = (((device.currentValue("tx1", true).toInteger() - obsEmpty)/(obsFull - zValue))*100)
-        updateAttr("fillPct", fillPct, "%")
-        if(tankCap > 0){
-            Integer computedFill = (tankCap * (fillPct / 100)) 
-            updateAttr("compLiquid", computedFill, volumeUnit)
-        }        
+    if(debugEnable) log.debug "Computing Values"
+    try{
+	    if((obsFull && obsEmpty) || (obsFull && factoryZero)){
+    	    if(factoryZero) 
+        		zValue = device.currentValue("tx1z", true).toInteger()
+        	else 
+            	zValue =  obsEmpty
+	        Integer fillPct = (((device.currentValue("tx1", true).toInteger() - zValue)/(obsFull - zValue))*100)
+    	    updateAttr("fillPct", fillPct, "%")
+        	if(tankCap > 0){
+            	Integer computedFill = (tankCap * (fillPct / 100)) 
+            	updateAttr("compLiquid", computedFill, volumeUnit)
+        	}        
+    	}	
+    	// Unit uses 4 AA batteries with a nominal voltage reported of ~6.0v, 1.5v/battery is considered full and 1.2v is considered "dead"
+    	Integer battery = (((device.currentValue("tx2", true).toDouble() - (1.2 * 4)) / (6 - (1.2 * 4)))*100)
+   		if(battery > 100) battery = 100
+    	if(battery < 0) battery = 0
+    	if(debugEnable)
+    		log.debug "Battery: $battery"
+    	updateAttr("battery", battery, "%")
+    } catch (msg) {
+    	log.error "Compute Values failed - $msg<br>Other processing continues"
     }
-    // Unit uses 4 AA batteries with a nominal voltage reported of ~6.0v, 1.5v/battery is considered full and 1.2v is considered "dead"
-    Integer battery = (((device.currentValue("tx2").toDouble() - (1.2 * 4)) / (6 - (1.2 * 4)))*100)
-    if(battery > 100) battery = 100
-    if(battery < 0) battery = 0
-    updateAttr("battery", battery, "%")
-                                                                            
-}
-
-@SuppressWarnings('unused')
-void buildHtml() {
+    
     String htmlStr = ""
     htmlStr+="<div class='tile-contents'>"
     htmlStr+="<div class='tile-primary'>Fill Level ${device.currentValue('fillPct',true)}%<br/>${device.currentValue('compLiquid',true)} ${device.currentState('compLiquid')?.unit}</div>"

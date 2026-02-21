@@ -1,0 +1,17 @@
+{
+ "packageName":"Lock History",
+ "author":"Jean P. May, Jr.",
+ "version":"0.2.6",
+ "dateReleased":"2025-08-08",
+ "apps": [
+  {
+     "id":"bae8e7ec-48a2-444a-b9e0-b49df78bfe82",
+     "name":"Lock History",
+     "namespace":"thebearmay",
+     "location":"https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/apps/lockHistory.groovy",
+     "required":true,
+     "oauth":false,
+     "primary":true
+  }
+  ]
+}

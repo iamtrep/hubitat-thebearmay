@@ -6,16 +6,33 @@
 * Access List	 * Clear: /hub/advanced/limitAccess?addresses=  // Requires reboot			
 * Access List	 * Get: /hub/advanced/getLimitedAccessAddresses 			
 * Access List	 *			
-* Apps	 * App Type List			
+* Apps	 * 			
 * Apps	 * /app/appTypeList
 * Apps   * /hub2/appsList
 * Apps   * /hub2/userAppTypes
 * Apps   * /hub/advanced/reloadAppAndDriverDefinitions //Resets 'Error 404' conditions
 * Apps   * /installedapp/statusJson/<appID> //>=HE 2.4.0.xx returns the application status page data
+* Apps	 *	// 2.4.3.121
+* Apps	 *	/hub/advanced/stateCompressionStatus // returns true/false to show whether features is enabled.
+* Apps	 *	/hub/advanced/enableStateCompression
+* Apps	 *	/hub/advanced/disableStateCompression
+* Apps   *  /app/list/single/data/<appCodeId> // app meta data and source
 * Apps	 *	
 * Backup    * Backup Download
 * Backup    * /hub/backupDB?fileName=latest
-* Backup    *
+* Backup    * 
+* Backup    * Backup Restore
+* Backup    * /hub/uploadBackup
+* Backup    * // this must be sent using a POST and needs to contain the backup to be restored embedded in the message
+* Backup    * //      (Content-Type: multipart/form-Data;)
+* Backup    * // if successful return JSON {"success":"true", "message":""}
+* Backup    * /hub2/restore/UploadedBackup
+* Backup    * //this is sent using an HTTP GET, normally the response is a 500 error but it can be ignored
+* Backup    * 
+* Backup    * // List of cloud backups for the account
+* Backup    * /hub2/cloudBackups?force=false
+* Backup    * // List of local backups
+* Backup    * /hub2/localBackups
 * Bundles    *
 * Bundles    * /hub2/userBundles
 * Bundles    *
@@ -23,6 +40,12 @@
 * Cloud    * /hub/advanced/disableCloudController
 * Cloud    * /hub/advanced/enableCloudController
 * Cloud    *
+* Dashboards  *
+* Dashboards  * /dashboard/all?pinToken=xxxxxx
+* Dashboards  * // use dashboard accessToken from /hub2/HubData 
+* Dashboards  *
+* Dashboards  * /dashboard/devices
+* Dashboards  *
 * DB	 * Database			
 * DB	 * /hub/advanced/databaseSize			
 * DB	 * /hub/cleanupDatabase
@@ -30,8 +53,11 @@
 * Device    * Device
 * Device    * /device/forceDelete/<devID>/yes
 * Device    * /hub2/devicesList
+* Device    * /device/drivers
 * Device    * /hub2/userDeviceTypes
 * Device    * /device/fullJson/<devID>  //2.4.0.x
+* Devive    * /device/listJson?capability=capability.* //any valid capability
+* Device    * /device/listJson?capability=device.<driverName> //i.e. HubInformationDriverv3
 * Device    *
 * Diag	 * Force Update of Diag Tool			
 * Diag	 *   /hub/cloud/updateDiagnosticTool
@@ -50,17 +76,22 @@
 * DNS	 * Opt out: /hub/advanced/setDNSFallback/false			
 * DNS	 * Opt In: /hub/advanced/setDNSFallback/true			
 * DNS	 * Get: /hub/advanced/getDNSFallback			
-* DNS	 *			
+* DNS	 *	
+* Driver  *
+* Driver  * /driver/list/single/data/<driverCodeId>  //has source attribute in the JSON
+* Driver  *
 * Events	 * Events 			
 * Events	 *    Get: /hub/advanced/event/limit			
 * Events	 *    Set: /hub/advanced/event/limit/2000			
 * Events	 *    Set: /hub/advanced/deviceStateHistorySize/2000			
 * Events	 * 			
 * Events	 * Max State Retention Days			
-* Events	 * /hub/advanced/maxDeviceStateAgeDays			
+* Events	 * /hub/advanced/maxDeviceStateAgeDays	
+* Events	 * /hub/advanced/maxDeviceStateAgeDays/nnn			
 * Events	 *			
 * Events	 * Max Event Retention Days			
 * Events	 * /hub/advanced/maxEventAgeDays			
+* Events	 * /hub/advanced/maxEventAgeDays/nnn
 * Events	 *			
 * Files	 * Local File List			
 * Files	 * /hub/fileManager/json			
@@ -70,6 +101,9 @@
 * Firmware	 *
 * Hub    *
 * Hub    * /hub/details/json //2.4.0.x
+* Hub    * /hub/messages
+* Hub    * /hub/cpuInfo
+* Hub    * /hub/echoDiscovery  //Can Amazon Echo see hub
 * Hub    *
 * Hub Vars    *
 * Hub Vars    * /installedapp/configure/json/<ID of HubVar app>/hubVar
@@ -79,21 +113,27 @@
 * Jobs	*
 * Libraries    *
 * Libraries    * /hub2/userLibraries
+* Libraries    * /library/list/single/data/<libID>
 * Libraries    *
 * Logs	 * Logs 			
-* Logs	 * /logs/json			
+* Logs	 * /logs/json	
+* Logs	 * /logs/eventsJson
+* Logs	 * /logs/past/json
 * Logs	 *			
 * Manage	 * Management Endpoints			
 * Manage	 * /hub/advanced/getManagementToken 			
 * Manage	 * /management/firmwareUpdate?token=<tokenValue> //update firmware			
 * Manage	 * /management/firmwareUpdateStatus?token=<tokenValue> //get current firmware update status.			
-* Manage	*  /management/clone?token=tokenValue&source=<sourceHubIpAddress>&sourceToken=<sourceHubTokenValue> //clones hub's database from the source hub, preserving current hub's management token			
+* Manage	 * //clones hub's database from the source hub, preserving current hub's management token		
+* Manage	 * /management/clone?token=tokenValue&source=<sourceHubIpAddress>&sourceToken=<sourceHubTokenValue> 
 * Manage	 * /management/reboot?token=<TOKEN>			
 * Manage	 * /management/setStaticIp?token=<TOKEN>&address=<IP>&netmask=<net mask>&gateway=<gateway IP>&nameserver=<nameserver IP>			
 * Manage	 * 			
 * Matter	 * Matter Details			
-* Matter	 * /hub/matterDetails/json			
-* Matter	 *			
+* Matter	 * /hub/matterDetails/json		
+* Matter	 * Get Button to Reset all Matter settings
+* Matter	 * /hub/matterDetails?fullui=true		
+* Matter   *
 * Mem	 * Free Memory			
 * Mem	 * /hub/advanced/freeOSMemory			
 * Mem	 * /hub/advanced/freeOSMemoryHistory			
@@ -109,7 +149,8 @@
 * Mesh	 * /hubMesh/localLinkedDevice/<hostDevId>
 * Mesh	 *
 * Mesh	 * Hub Mesh Initialize			
-* Mesh	 *   /hub/advanced/setInitialHubMeshPeers?<Hub IP List>			
+* Mesh	 *   /hub/advanced/setInitialHubMeshPeers?<Hub IP List>	
+* Mesh	 *   /device/hubMeshReconnect
 * Mesh	 *		
 * Mesh	 * Token
 * Mesh   * /device/showHubMeshToken
@@ -125,7 +166,6 @@
 * Net	 * /hub2/networkConfiguration			
 * Net	 *			
 * Other	 * Other	
-* Other	 *  /hub/cloud/updatePlatform	
 * Other  *  /hub/data
 * Other  *  /hub/list/data   //returns the same data as the /hub/data
 * Other	 *  /api/hubitat.xml
@@ -163,8 +203,14 @@
 * Reset    * Factory Reset
 * Reset    * /factory/recovery
 * Reset    *
+* Retry    * //2.4.1.103
+* Retry    * /hub/commandRetryController/enable/true
+* Retry    * /hub/commandRetryController/enable/false
+* Retry    *
+* Retry    *
 * Rooms    *
 * Rooms    * /hub2/roomsList
+* Rooms    * /room/listRoomsJson
 * Rooms    *
 * Security	 * Security in Use			
 * Security	 * /logout 			
@@ -216,6 +262,7 @@
 * Zigbee   *    /hub/resetzigbee
 * Zigbee   *    /hub/searchZigbeeDevices
 * Zigbee   *    /hub/zigbeeChannelScan
+* Zigbee   *    /hub/zigbee/healthStatus //>= 2.4.1.154 true if stack is up
 * Zigbee	 *			
 * Zigbee	 * Zigbee Details			
 * Zigbee	 * /hub/zigbeeDetails/json //>= 2.3.7.1			
@@ -232,4 +279,26 @@
 * Zwave	 * /hub/zwaveRepair
 * ZWave  * /hub/zwave/reset
 * Zwave	 * /hub/zwaveDetails/json
+* Zwave  * /hub/zwave/healthStatus //>= 2.4.1.154 true if stack is up   
+* Zwave	 * /hub/zwaveTopology
+* Zwave	 *
+* Zwave	 *
+* Zwave	 * 2.1.4.110 ZWave JS 
+* Zwave	 * /hub/zwave2/forceInstallZWaveJS
+* Zwave	 * /hub/zwave2/forceEnable
+* Zwave	 * /hub/zwave2/enable
+* Zwave	 * /hub/zwave2/disable
+* Zwave	 * /hub/zwave2/status
+* Zwave	 * /hub/zwave2/getNodeState?node=<xx> //node number is decimal
+* ZWave  * /hub/zwave2/reinterview?node=<0x9999>
+* ZWave  * /hub/zwave2/enableDebugLogging
+* ZWave  * /hub/zwave2/disableDebugLogging
+* ZWave  * /hub/zwave2/getControllerState
+* ZWave  * 
+* ZWave  * to resolve a firmware bug 
+* ZWave  * /hub/zwave2/watchdog/disable
+* ZWave  * /hub/zwave2/watchdog/enable
+* ZWave  * 
+* ZWave  * 2.4.3.145 - complete reset of the JS install
+* ZWave  * /hub/zwave2/cleanInstallZWaveJS
 /* 

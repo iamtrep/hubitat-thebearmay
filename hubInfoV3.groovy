@@ -76,14 +76,33 @@
  *    2024-11-08                 v3.1.10 - Add capability URL and attributes to allow display on Easy Dash
  *                               v3.1.11 - Fix degree symbol when using File Manager output
  *    2024-11-16                 v3.1.12 - fix min version check
+ *    2025-01-31				 v3.1.13 - add zwaveJS(enabled/disabled), zwaveRegion, zwaveUpdateAvail(true/false), zigbeeUpdateAvail(true/false)
+ *    2025-04-06				 v3.1.14 - Add jvmSize, jvmFree, zwHealthy, zbHealthy
+ *	  2025-05-02				 v3.1.15 - Trap file write attempt without data 
+ *	  2025-06-24				 v3.1.16 - Add sunriseTomorrow and sunsetTomorrow
+ *	  2025-06-26				 v3.1.17 - negative hour fix for sunriseTomorrow
+ *	  2025-09-23				 v3.1.18 - Add app state compression attribute
+ *	  2025-10-02				 v3.1.19 - fix typo on zbHealthy
+ *	  2025-11-25				 v3.1.20 - Extend H2 data timeout to 1500
+ *	  2025-11-27				 v3.1.21 - change H2 to httpGet
+ *	  2025-12-07				 v3.1.22 - add javaDirect
+ *	  2025-12-23				 v3.1.23 - move driver version update code
+ *	  2026-01-13				 v3.1.24 - h2Data issue
+ *	  2023-01-20				 v3.1.25 - make freeMem15 unit agree with freeMemory
 */
 import java.text.SimpleDateFormat
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import groovy.transform.Field
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util.TimeZone
 
 @SuppressWarnings('unused')
-static String version() {return "3.1.12"}
+static String version() {return "3.1.24"}
 
 metadata {
     definition (
@@ -177,10 +196,24 @@ metadata {
         attribute "matterStatus", "string"
         attribute "releaseNotesUrl", "string"
         attribute "accessList","string"
+        attribute "sunriseTomorrow","string"
+        attribute "sunsetTomorrow","string"
+		//HE v2.7.3.1
+		attribute "zwaveJS", "string"
+        attribute "zwaveRegion","string"
+		attribute "zwaveUpdateAvail", "string"
+		attribute "zigbeeUpdateAvail", "string"
+        // HE v2.4.1.154
+        attribute "jvmFree", "number"
+        attribute "jvmSize", "number"
+        attribute "zbHealthy", "string"
+        attribute "zwHealthy", "string"
         // Virtual URL Device attributes
         attribute "URL", "string"
-        attribute "type", "string"//iframe, image or video
-
+        attribute "type", "string"//iframe, image, link, or video
+        //HE v2.4.3.121
+        attribute "appStateCompression", "string"
+		attribute "javaDirect","number"
         command "hiaUpdate", ["string"]
         command "reboot"
         command "rebootW_Rebuild"
@@ -227,7 +260,7 @@ preferences {
 @SuppressWarnings('unused')
 void installed() {
     log.trace "installed()"
-    xferFile("https://raw.githubusercontent.com/thebearmay/hubitat/main/hubInfoTemplate.res","hubInfoTemplate.res")
+    xferFile("https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/hubInfoTemplate.res","hubInfoTemplate.res")
     initialize()
     configure()
 }
@@ -240,6 +273,8 @@ void initialize() {
         runIn(30,"updateCheck")
     if(!state?.v2Cleaned)
         v2Cleanup()
+    if(driverVersionCheck())
+    	runIn(5,"updated")
     log.info "Hub Information v${version()} initialized"
     runIn(120,"baseData")
 
@@ -312,7 +347,7 @@ void updated(){
     device.updateSetting("htmlOutput",[value:toCamelCase(htmlOutput),type:"string"])
     if(makerInfo == null || !makerInfo.contains("https://cloud.hubitat.com/"))
         cloudFontStyle = 'font-weight:bold;color:red'
-    else
+    elseversion
         cloudFontStyle = ''
 
     if(remUnused) removeUnused()
@@ -332,6 +367,14 @@ void v2Cleanup() {
     device.deleteCurrentState("nextPoll")
     device.deleteCurrentState("hubVersion")
     state.v2Cleaned = true
+}
+
+boolean driverVersionCheck(){
+    if(version() != getDataValue('driverVersion')){
+    	updateDataValue('driverVersion', "${version()}")
+        return true
+    } else
+        return false
 }
 
 
@@ -376,6 +419,8 @@ void poll4(){
 }
 
 void baseData(dummy=null){
+	if(driverVersionCheck())
+    	runIn(5,"updated")
     String model = getHubVersion() // requires >=2.2.8.141
     updateAttr("hubModel", model)
     
@@ -439,7 +484,10 @@ void baseData(dummy=null){
 
     if(minVerCheck("2.3.6.1"))
         extendedZigbee()
-    
+    if(minVerCheck("2.4.1.103"))
+    	zwaveJsStat()
+    if(minVerCheck("2.4.3.121"))
+    	checkAppComp()
     everyPoll("baseData")
 }
 
@@ -451,14 +499,36 @@ void everyPoll(whichPoll=null){
     sunrise = sdfIn.parse(location.sunrise.toString())
     sunset = sdfIn.parse(location.sunset.toString())
     
+    int yearST=new Date().getYear() + 1900
+    int monthST=new Date().getMonth() + 1
+    int dayST=new Date().getDate() + 1
+    
+    try {
+    	LocalDate.of(yearST,monthST,dayST)
+    } catch (dCheck){
+    	monthST++
+        dayST = 1
+        if(monthST > 12) 
+            monthST = 1
+    }
+    
+    ZonedDateTime ssTom = calculateSunset(yearST, monthST, dayST)
+    ZonedDateTime srTom = calculateSunrise(yearST, monthST, dayST)
+       
 	if(sunSdfPref == null) device.updateSetting("sunSdfPref",[value:"HH:mm:ss",type:"enum"])
+    	
     if(sunSdfPref != "Milliseconds") {
         SimpleDateFormat sdf = new SimpleDateFormat(sunSdfPref)
+		DateTimeFormatter dtf = DateTimeFormatter.ofPattern(sunSdfPref)
         updateAttr("sunrise", sdf.format(sunrise))
 	    updateAttr("sunset", sdf.format(sunset))
+        updateAttr("sunsetTomorrow",ssTom.format(dtf))
+    	updateAttr("sunriseTomorrow",srTom.format(dtf))
     } else {
         updateAttr("sunrise", sunrise.getTime())
-	    updateAttr("sunset", sunset.getTime())  
+	    updateAttr("sunset", sunset.getTime())
+        updateAttr("sunsetTomorrow",ssTom.toInstant().toEpochMilli())
+    	updateAttr("sunriseTomorrow",srTom.toInstant().toEpochMilli())
     }
     updateAttr("localIP",location.hub.localIP)
 
@@ -483,7 +553,7 @@ void updateAttr(String aKey, aValue, String aUnit = ""){
     if(aValue.contains("Your hub is starting up"))
        return
 
-    sendEvent(name:aKey, value:aValue, unit:aUnit)
+    sendEvent(name:aKey, value:aValue, unit:aUnit, descriptionText:"$aKey : $aValue$aUnit")
     if(attrLogging) log.info "$aKey : $aValue$aUnit"
 }
 
@@ -531,6 +601,7 @@ void freeMemoryReq(){
     ]
     if (debugEnable) log.debug params
         asynchttpGet("getFreeMemory", params)    
+    jvmReq()
 }
 
 @SuppressWarnings('unused')
@@ -562,6 +633,43 @@ void getFreeMemory(resp, data) {
     } catch(ignored) {
         def respStatus = resp.getStatus()
         if (!warnSuppress) log.warn "getFreeMem httpResp = $respStatus but returned invalid data, will retry next cycle"    
+    }
+}
+
+void jvmReq(){
+    params = [
+        uri    : "http://127.0.0.1:8080",
+        path   : "/hub/advanced/freeOSMemoryHistory",
+        headers: [
+            "Connection-Timeout":600
+        ]
+    ]
+    if (debugEnable) log.debug params
+        asynchttpGet("getJvm", params)    
+}
+
+@SuppressWarnings('unused')
+void getJvm(resp, data) {
+    try {
+        if(resp.getStatus() == 200 || resp.getStatus() == 207) {
+            //log.debug "${resp.data}"
+            ArrayList memRecs = resp.data.toString().split('\n')
+            String memRec = memRecs[memRecs.size()-1]
+            ArrayList memWork = memRec.split(',')
+            if(debugEnable) 
+            	log.debug "JVM record ${memRecs.size()} ${memWork.size()} $memRec<br> $memWork"
+                           
+        	if(memWork.size() >= 5){
+               updateAttr("jvmSize",memWork[3], "KB")
+               updateAttr("jvmFree",memWork[4], "KB")
+            }
+            if(memWork.size >= 6) {
+                updateAttr("javaDirect",memWork[5], "KB")
+            }
+    	}
+    } catch(ignored) {
+        def respStatus = resp.getStatus()
+        if (!warnSuppress) log.warn "getJvm httpResp = $respStatus but returned invalid data, will retry next cycle"    
     }
 }
 
@@ -615,8 +723,23 @@ void get15Min(resp, data){
         updateAttr("cpu15Min",cpuWork.round(2))
         cpuWork = (cpuWork/4.0D)*100.0D //Load / #Cores - if cores change will need adjusted to reflect
         updateAttr("cpu15Pct",cpuWork.round(2),"%")
-        updateAttr("freeMem15",memWork)
-    }
+        
+		if(freeMemUnit == "Dynamic"){
+			if(memWork > 1048575){ 
+				freeMemUnit = "GB"
+			}else if(memWork > 150000){
+				freeMemUnit = "MB"
+            }else 
+                freeMemUnit = "KB"
+        }
+    	if(freeMemUnit == "GB")
+			updateAttr("freeMem15",(new Float(memWork/1024/1024).round(2)), "GB")
+		else
+		if(freeMemUnit == "MB")
+			updateAttr("freeMem15",(new Float(memWork/1024).round(2)), "MB")
+		else
+			updateAttr("freeMem15",memWork, "KB")
+        }
 }
 
 void cpuLoadReq(){
@@ -810,20 +933,24 @@ void parseZwave(String zString){
     Integer start = zString.indexOf('(')
     Integer end = zString.length()
     String wrkStr
-    
-    if(start == -1 || end < 1 || zString.indexOf("starting up") > 0 ){ //empty or invalid string - possibly non-C7
-        //updateAttr("zwaveData",null)
-        if(!warnSuppress) log.warn "Invalid ZWave Data returned"
-    }else {
-        wrkStr = zString.substring(start,end)
-        wrkStr = wrkStr.replace("(","[")
-        wrkStr = wrkStr.replace(")","]")
+    if(device.currentValue('zwaveJS',true) != 'true' && zString.length() != 4){
+    	if(start == -1 || end < 1 || zString.indexOf("starting up") > 0 ){ //empty or invalid string - possibly non-C7
+        	//updateAttr("zwaveData",null)
+        	if(!warnSuppress) log.warn "Invalid ZWave Data returned ($zString) "
+    	}else {
+        	wrkStr = zString.substring(start,end)
+        	wrkStr = wrkStr.replace("(","[")
+        	wrkStr = wrkStr.replace(")","]")
 
-        HashMap zMap = (HashMap)evaluate(wrkStr)
-
-        if(!minVerCheck("2.3.8.124"))
-            updateAttr("zwaveSDKVersion","${((List)zMap.targetVersions)[0].version}.${((List)zMap.targetVersions)[0].subVersion}")
-        else {
+        	HashMap zMap = (HashMap)evaluate(wrkStr)
+        	updateAttr("zwaveVersion","${zMap?.firmware0Version}.${zMap?.firmware0SubVersion}.${zMap?.hardwareVersion}")
+        }
+    }else
+       updateAttr("zwaveVersion","$zString")
+                  
+    if(!minVerCheck("2.3.8.124"))
+        updateAttr("zwaveSDKVersion","${((List)zMap.targetVersions)[0].version}.${((List)zMap.targetVersions)[0].subVersion}")
+    else {
             params = [
                 uri    : "http://127.0.0.1:8080",
                 path   : "/hub/advanced/zipgatewayVersion",
@@ -834,11 +961,8 @@ void parseZwave(String zString){
             httpGet(params) { resp ->
                 updateAttr("zwaveSDKVersion",resp.data)
             }
-        }
-            
-        
-        updateAttr("zwaveVersion","${zMap?.firmware0Version}.${zMap?.firmware0SubVersion}.${zMap?.hardwareVersion}")
     }
+            
 }
 
 void ntpServerReq(){
@@ -914,17 +1038,16 @@ void getHubMesh(resp, data){
         if (resp.getStatus() == 200){
             if (debugEnable) log.info resp.data
             def jSlurp = new JsonSlurper()
-            Map h2Data = (Map)jSlurp.parseText((String)resp.data)
+            Map hmData = (Map)jSlurp.parseText((String)resp.data)
             i=0
             subMap2=[:]
             jStr="["
-            h2Data.hubList.each{
+            hmData.hubList.each{
                 if(i>0) jStr+=","
                 jStr+="{\"hubName\":\"$it.name\","
                 jStr+="\"active\":\"$it.active\","
                 jStr+="\"offline\":\"$it.offline\","
-                jStr+="\"ipAddress\":\"$it.ipAddress\","
-                jStr+="\"meshProtocol\":\"$h2Data.hubMeshProtocol\"}"          
+                jStr+="\"ipAddress\":\"$it.ipAddress\"}"        
                 i++
             }
             jStr+="]"
@@ -962,27 +1085,25 @@ void hub2DataReq() {
     params = [
         uri    : "http://127.0.0.1:8080",
         path   : "/hub2/hubData",
+        timeout: 300,
         headers: [
-            "Connection-Timeout": 800
+            "Connection-Timeout": 1500
         ]                   
     ]
     
-        if(debugEnable)log.debug params
-        asynchttpGet("getHub2Data", params)
-    
-    checkSecurity()
-}
-
-@SuppressWarnings('unused')
-void getHub2Data(resp, data){
-    try{
-        if (resp.getStatus() == 200){
-            if (debugEnable) log.debug resp.data
+	if(debugEnable)
+    	log.debug params
+    httpGet(params) {resp ->
+	    try{
+            if (debugEnable) 
+        		log.debug resp.data
             try{
-				def jSlurp = new JsonSlurper()
-			    h2Data = (Map)jSlurp.parseText((String)resp.data)
-            } catch (eIgnore) {
-                if (debugEnable) log.debug "H2: $h2Data <br> ${resp.data}"
+//				def jSlurp = new JsonSlurper()
+//			    h2Data = (Map)jSlurp.parseText((String)resp.data)
+            	h2Data = (Map)resp.data
+            } catch (eMsg) {
+                if (debugEnable) 
+                	log.debug "H2: $eMsg<br>$h2Data <br> ${resp.data}"
                 return
             }
             
@@ -1020,13 +1141,14 @@ void getHub2Data(resp, data){
             } else {
                 updateAttr("pCloud", "not connected")
             }
-            //log.debug "H2 Request successful"
-        } else {
-            if (!warnSuppress) log.warn "Status ${resp.getStatus()} on H2 request"
-        } 
-    } catch (Exception ex){
-        if (!warnSuppress) log.warn ex
+	    } catch (Exception ex){
+    	    if (!warnSuppress) log.warn ex
+    	}  
     }
+
+    checkSecurity()
+    zHealthReq()
+
 }
 
 void checkSecurity(){
@@ -1190,24 +1312,37 @@ void getUpdateCheck(resp, data) {
     }
 
 }
-/*
-void zigbeeStackReq(){
+
+void zHealthReq(){
+    if(!minVerCheck("2.4.1.154"))
+    	return
     params = [
         uri: "http://127.0.0.1:8080",
-        path:"/hub/currentZigbeeStack"
+        path:"/hub/zigbee/healthStatus"
     ]
-        asynchttpGet("getZigbeeStack",params) 
+        asynchttpGet("getZbHealth",params) 
+    
+    params = [
+        uri: "http://127.0.0.1:8080",
+        path:"/hub/zwave/healthStatus"
+    ]
+        asynchttpGet("getZwHealth",params) 
 }
 
-void getZigbeeStack(resp, data) {
+void getZbHealth(resp, data) {
     try {
-        if(resp.data.toString().indexOf('standard') > -1)
-            updateAttr("zigbeeStack","standard")
-        else
-            updateAttr("zigbeeStack","new")      
+        updateAttr("zbHealthy",resp.data)
+      
     } catch(ignore) { }
 }
-*/
+
+void getZwHealth(resp, data) {
+    try {
+        updateAttr("zwHealthy",resp.data)
+      
+    } catch(ignore) { }
+}
+
 void checkCloud(){
     if(makerInfo == null || !makerInfo.contains("https://cloud.hubitat.com/")) {
         updateAttr("cloud", "invalid endpoint")
@@ -1269,6 +1404,7 @@ void getExtendedZigbee(resp, data){
         Map zbData = (Map)jSlurp.parseText((String)resp.data)
         updateAttr("zigbeeStatus","${zbData.networkState}".toLowerCase())
         updateAttr("zigbeePower",zbData.powerLevel)
+		updateAttr("zigbeeUpdateAvail", zbData.firmwareUpdateAvailable)
         if(zbData?.pan) updateAttr("zigbeePan",zbData.pan)
         if(zbData?.epan) updateAttr("zigbeeExtPan",zbData.epan)
     } catch (EX) {
@@ -1276,6 +1412,57 @@ void getExtendedZigbee(resp, data){
     }
         
 }
+
+void extendedZwave(){
+    
+    if(!minVerCheck("2.3.7.1"))
+        return
+    params = [
+        uri    : "http://127.0.0.1:8080",
+        path   : "/hub/zwaveDetails/json",
+        headers: [
+            "Connection-Timeout":600
+        ]
+    ]
+    if (debugEnabled) log.debug params
+    asynchttpGet("getExtendedZwave", params)    
+}    
+
+void getExtendedZwave(resp, data){
+    try{
+        def jSlurp = new JsonSlurper()
+        Map zwData = (Map)jSlurp.parseText((String)resp.data)
+        updateAttr("zwaveUpdateAvail","${zwData.isRadioUpdateNeeded}")
+        updateAttr("zwaveRegion","${zwData.region}")
+//        updateAttr("zwaveStatus",zwData.enabled) //already caught in hub2 data
+    } catch (EX) {
+        //log.error "$EX"
+    }
+    zwaveJsStat()
+        
+}
+
+void zwaveJsStat(){
+	params = [
+        uri    : "http://127.0.0.1:8080",
+        path   : "/hub/zwave2/status",
+        headers: [
+            "Connection-Timeout":600
+        ]
+    ]
+	if (debugEnabled) log.debug params
+    asynchttpGet("getZwaveJsStat", params) 
+}
+
+void getZwaveJsStat(resp, data){
+    try{
+        updateAttr("zwaveJS","${resp.data}")
+    } catch (EX) {
+        //log.error "$EX"
+    }
+        
+}
+
 
 void checkMatter(){
     hubModel = getHubVersion()
@@ -1335,6 +1522,25 @@ void getAccess(resp, data) {
     }
 }
 
+void checkAppComp(){
+    params = [
+        uri    : "http://127.0.0.1:8080",
+        path   : "/hub/advanced/stateCompressionStatus",
+        headers: [
+            "Connection-Timeout":600
+        ]
+    ]
+    if (debugEnabled) log.debug params
+    asynchttpGet("getCompressStatus", params)     
+}
+
+void getCompressStatus(resp, data) {
+    try{
+		updateAttr('appStateCompression',"${resp.data.toString()}")
+    } catch (e) {    
+    }
+}
+
 @SuppressWarnings('unused')
 boolean isCompatible(Integer minLevel) { //check to see if the hub version meets the minimum requirement
     String model = getHubVersion()
@@ -1358,10 +1564,7 @@ String readExtFile(fName){
     def params = [
         uri: fName,
         contentType: "text/html",
-        textParser: true,
-        headers: [
-				
-            ]        
+        textParser: true,   
     ]
 
     try {
@@ -1396,10 +1599,10 @@ Boolean fileExists(fName){
             byte[] rData = downloadHubFile("$fName")
             fContent = new String(rData, "UTF-8")
             if(fContent.size() > 0) {
-                if(debugEnable) log.debug "File Exist: true"
+                if(debugEnable) log.debug "$fName File Exist: true"
                 return true;
             } else {
-                if(debugEnable) log.debug "File Exist: false"
+                if(debugEnable) log.debug "$fName File Exist: false"
                 return false;                
             }
         }
@@ -1417,10 +1620,10 @@ Boolean fileExists(fName){
     try {
         httpGet(params) { resp ->
             if (resp != null){
-                if(debugEnable) log.debug "File Exist: true"
+                if(debugEnable) log.debug "$fName File Exist: true"
                 return true;
             } else {
-                if(debugEnable) log.debug "File Exist: false"
+                if(debugEnable) log.debug "$fName File Exist: false"
                 return false
             }
         }
@@ -1441,12 +1644,12 @@ void hiaUpdate(htmlStr) {
 
 void createHtml(){
     if(alternateHtml == null || fileExists("$alternateHtml") == false){
-        xferFile("https://raw.githubusercontent.com/thebearmay/hubitat/main/hubInfoTemplate.res","hubInfoTemplate.res")
+        xferFile("https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/hubInfoTemplate.res","hubInfoTemplate.res")
         device.updateSetting("alternateHtml",[value:"hubInfoTemplate.res", type:"string"])
     }
     String fContents = readFile("$alternateHtml")
     if(fContents == 'null' || fContents == null) {
-        xferFile("https://raw.githubusercontent.com/thebearmay/hubitat/main/hubInfoTemplate.res","hubInfoTemplate.res")
+        xferFile("https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/hubInfoTemplate.res","hubInfoTemplate.res")
         device.updateSetting("alternateHtml",[value:"hubInfoTemplate.res", type:"string"]) 
         fContents = readFile("$alternateHtml")
     }
@@ -1554,6 +1757,10 @@ String readFile(fName){
 }
 @SuppressWarnings('unused')
 Boolean writeFile(String fName, String fData) {
+    if(fData.size() < 1) {
+        log.error "$fName cannot be created with size ${fData.size()}"
+        return false
+    }
     if(minVerCheck("2.3.4.134")){
         wData = fData.getBytes("UTF-8")
         uploadHubFile("$fName",wData)
@@ -1814,6 +2021,136 @@ Boolean minVerCheck(vStr){  //check if HE is >= to the requirement
     return rValue
 }
 
+ZonedDateTime calculateSunrise(int year=new Date().getYear() + 1900, int month=new Date().getMonth() + 1, int day=new Date().getDate()) {
+    final double ZENITH = 90.83333 // Official zenith for sunrise/sunset
+    LocalDate date = LocalDate.of(year, month, day)
+    double latitude = location.latitude
+    double longitude = location.longitude
+    int dayOfYear = date.dayOfYear
+    
+    double lngHour = longitude / 15
+    double t = dayOfYear + ((6 - lngHour) / 24)
+
+    // Mean anomaly
+    double M = (0.9856 * t) - 3.289
+    
+    // Sun's true longitude
+    double L = (M + (1.916 * Math.sin(Math.toRadians(M))) + (0.020 * Math.sin(Math.toRadians(2 * M))) + 282.634) % 360
+
+    // Right ascension
+    double RA = Math.toDegrees(Math.atan(0.91764 * Math.tan(Math.toRadians(L))))
+    RA = RA % 360
+
+    // Adjust RA to be in the same quadrant as L
+    double Lquadrant = (Math.floor(L / 90)) * 90
+    double RAquadrant = (Math.floor(RA / 90)) * 90
+    RA = RA + (Lquadrant - RAquadrant)
+
+    // Convert RA into hours
+    RA = RA / 15
+
+    // Calculate declination of the sun
+    double sinDec = 0.39782 * Math.sin(Math.toRadians(L))
+    double cosDec = Math.cos(Math.asin(sinDec))
+
+    // Calculate the sun's local hour angle
+    double cosH = (Math.cos(Math.toRadians(ZENITH)) - (sinDec * Math.sin(Math.toRadians(latitude)))) / (cosDec * Math.cos(Math.toRadians(latitude)))
+
+    if (cosH > 1) {
+        return -1 //no sunrise at this location for this date 
+    }
+
+    // Calculate H and convert into hours
+    double H = 360 - Math.toDegrees(Math.acos(cosH))
+    H = H / 15
+
+    // Calculate local mean time
+    double T = H + RA - (0.06571 * t) - 6.622
+
+    // Adjust time back to UTC
+    double UT = (T - lngHour) % 24
+    if (UT < 0) UT += 24
+    
+    // Convert UT to Local Time Zone
+    ZoneId zone = ZoneId.systemDefault()
+    ZonedDateTime utcTime = date.atTime((int) UT, (int) ((UT % 1) * 60)).atZone(ZoneId.of("UTC"))
+    ZonedDateTime localTime = utcTime.withZoneSameInstant(zone)
+
+    // Return the local sunrise time
+    return localTime//.toLocalTime()
+}
+    
+ZonedDateTime calculateSunset(int year=new Date().getYear() + 1900, int month=new Date().getMonth() + 1, int day=new Date().getDate()) {
+    final double ZENITH = 90.83333 // Official zenith for sunrise/sunset
+    day++
+    
+    try {
+    	LocalDate.of(year,month,day)
+    } catch (dCheck){
+    	month++
+        day = 1
+        if(month > 12) 
+            month = 1
+    }
+    
+    LocalDate date=LocalDate.of(year,month,day)
+    int dayOfYear = date.dayOfYear
+    double latitude = location.latitude
+    double longitude = location.longitude 
+
+    // Approximate time in hours
+    double lngHour = longitude / 15
+    double t = dayOfYear + ((18 - lngHour) / 24)
+
+    // Sun's mean anomaly
+    double M = (0.9856 * t) - 3.289
+
+    // Sun's true longitude
+    double L = M + (1.916 * Math.sin(Math.toRadians(M))) + (0.020 * Math.sin(Math.toRadians(2 * M))) + 282.634
+    L = (L + 360) % 360
+
+    // Sun's right ascension
+    double RA = Math.toDegrees(Math.atan(0.91764 * Math.tan(Math.toRadians(L))))
+    RA = (RA + 360) % 360
+
+    // Right ascension value needs to be in the same quadrant as L
+    double Lquadrant = (Math.floor(L / 90)) * 90
+    double RAquadrant = (Math.floor(RA / 90)) * 90
+    RA = RA + (Lquadrant - RAquadrant)
+
+    // Convert RA into hours
+    RA = RA / 15
+
+    // Sun's declination
+    double sinDec = 0.39782 * Math.sin(Math.toRadians(L))
+    double cosDec = Math.cos(Math.asin(sinDec))
+
+    // Sun's local hour angle
+    double cosH = (Math.cos(Math.toRadians(ZENITH)) - (sinDec * Math.sin(Math.toRadians(latitude)))) / (cosDec * Math.cos(Math.toRadians(latitude)))
+    if (cosH > 1) {
+        return -1  // Sun never sets
+    } else if (cosH < -1) {
+        return -1  // Sun never rises
+    }
+    
+    // H = local hour angle in degrees
+    double H = Math.toDegrees(Math.acos(cosH)) / 15
+
+    // Local mean time of sunset
+    double T = H + RA - (0.06571 * t) - 6.622
+
+    // Adjust back to UTC
+    double UT = (T - lngHour) % 24
+    if (UT < 0) UT += 24
+
+    // Convert UT to Local Time Zone
+    ZoneId zone = ZoneId.systemDefault()
+    ZonedDateTime utcTime = date.atTime((int) UT, (int) ((UT % 1) * 60)).atZone(ZoneId.of("UTC"))
+    ZonedDateTime localTime = utcTime.withZoneSameInstant(zone)
+
+    // Return the local sunset time
+    return localTime//.toLocalTime()
+}
 
 @SuppressWarnings('unused')
 void logsOff(){
@@ -1825,7 +2162,7 @@ void logsOff(){
 @Field static List <String> pollList = ["0", "1", "2", "3", "4"]
 @Field static prefList = [
 [parm01:[desc:"CPU Temperature Polling", attributeList:"temperatureF, temperatureC, temperature", method:"cpuTemperatureReq"]],
-[parm02:[desc:"Free Memory Polling", attributeList:"freeMemory", method:"freeMemoryReq"]],
+[parm02:[desc:"Free Memory Polling", attributeList:"freeMemory,jvmSize,jvmFree", method:"freeMemoryReq"]],
 [parm03:[desc:"CPU Load Polling", attributeList:"cpuLoad, cpuPct", method:"cpuLoadReq"]],
 [parm04:[desc:"DB Size Polling", attributeList:"dbSize", method:"dbSizeReq"]],
 [parm05:[desc:"Public IP Address", attributeList:"publicIP", method:"publicIpReq"]],
@@ -1836,13 +2173,14 @@ void logsOff(){
 [parm10:[desc:"Hub Mesh Data", attributeList:"hubMeshData, hubMeshCount", method:"hubMeshReq"]],
 [parm11:[desc:"Expanded Network Data", attributeList:"connectType (Ethernet, WiFi, Dual, Not Connected), connectCapable (Ethernet, WiFi, Dual), dnsServers, staticIPJson, lanIPAddr, wirelessIP, wifiNetwork, dnsStatus, lanSpeed", method:"extNetworkReq"]],
 [parm12:[desc:"Check for Firmware Update",attributeList:"hubUpdateStatus, hubUpdateVersion",method:"updateCheckReq"]],
-[parm13:[desc:"Z Status, Hub Alerts, Passive Cloud Check",attributeList:"hubAlerts,zwaveStatus, zigbeeStatus2, pCloud", method:"hub2DataReq"]],
-[parm14:[desc:"Base Data",attributeList:"firmwareVersionString, hardwareID, id, latitude, localIP, localSrvPortTCP, locationId, locationName, longitude, name, temperatureScale, timeZone, type, uptime, zigbeeChannel, zigbeeEui, zigbeeId, zigbeeStatus, zipCode",method:"baseData"]],
+[parm13:[desc:"Z Status, Hub Alerts, Passive Cloud Check",attributeList:"hubAlerts,zwaveStatus, zigbeeStatus2, pCloud, zbHealthy, zwHealthy", method:"hub2DataReq"]],
+[parm14:[desc:"Base Data",attributeList:"appStateCompression, firmwareVersionString, hardwareID, id, latitude, localIP, localSrvPortTCP, locationId, locationName, longitude, name, temperatureScale, timeZone, type, uptime, zigbeeChannel, zigbeeEui, zigbeeId, zigbeeStatus, zigbeePower, zigbeeUpdateAvail, zipCode",method:"baseData"]],
 [parm15:[desc:"15 Minute Averages",attributeList:"cpu15Min, cpu15Pct, freeMem15", method:"fifteenMinute"]],
 [parm16:[desc:"Active Cloud Connection Check",attributeList:"cloud", method:"checkCloud"]],
 [parm17:[desc:"Matter Status (C-5 and > only)",attributeList:"matterEnabled, matterStatus", method:"checkMatter"]],
 [parm18:[desc:"Restricted Access List",attributeList:"accessList", method:"checkAccess"]],
-[parm19:[desc:"Hub Security Active",attributeList:"securityInUse", method:"checkSecurity"]]     
+[parm19:[desc:"Hub Security Active",attributeList:"securityInUse", method:"checkSecurity"]],
+[parm20:[desc:"Extended ZWave",attributeList:"zwaveUpdateAvail, zwaveJS, zwaveRegion", method:"extendedZwave"]]     
 ]    
 @Field static String ttStyleStr = "<style>.tTip {display:inline-block;border-bottom: 1px dotted black;}.tTip .tTipText {display:none;border-radius: 6px;padding: 5px 0;position: absolute;z-index: 1;}.tTip:hover .tTipText {display:inline-block;background-color:yellow;color:black;}</style>"
 @Field sdfList = ["yyyy-MM-dd","yyyy-MM-dd HH:mm","yyyy-MM-dd h:mma","yyyy-MM-dd HH:mm:ss","ddMMMyyyy HH:mm","ddMMMyyyy HH:mm:ss","ddMMMyyyy hh:mma", "dd/MM/yyyy HH:mm:ss", "MM/dd/yyyy HH:mm:ss", "dd/MM/yyyy hh:mma", "MM/dd/yyyy hh:mma", "MM/dd HH:mm", "HH:mm", "H:mm","h:mma", "HH:mm:ss", "Milliseconds"]
