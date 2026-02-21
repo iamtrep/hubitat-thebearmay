@@ -67,7 +67,6 @@ def mainPage(){
 	    	section("Main") {
 				input "debugEnabled", "bool", title:"Enable Debug Logging:", submitOnChange:true, required:false, defaultValue:false
                 if(debugEnabled) {
-                    unschedule()
                     runIn(1800,logsOff)
                 }
      	    }
@@ -236,6 +235,8 @@ def getApi(resp, data){
             }
         } else if(resp.getStatus() == 401) {
             log.error "getApi - 401 Unauthorized for ${data.cmd}, check API credentials"
+        } else {
+            log.error "getApi - unexpected response ${resp.getStatus()} for ${data.cmd}"
         }
     } catch (Exception e) {
         log.error "getApi - $e.message"        
