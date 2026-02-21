@@ -154,21 +154,27 @@ void getAuth(command){
         body: "$bodyText"
 	]
 
-    if(debugEnabled) 
+    if(debugEnabled)
         log.debug "$requestParams"
-    httpPost (requestParams) { resp ->
-        if(debugEnabled) 
-        	log.debug "${resp.properties} - ${command} - ${resp.getStatus()} "
-        if(resp.getStatus() == 200 || resp.getStatus() == 207){
-            if(resp.data){
-                    Map jsonData = (HashMap) resp.data             
-                    state.temp_token = jsonData.access_token
-                    if(debugEnabled) log.debug "Token: ${jsonData.access_token}"
-                    state.tokenExpires = (jsonData.expires_in.toLong()*1000) + new Date().getTime().toLong()
-                    SimpleDateFormat sdf= new SimpleDateFormat("HH:mm:ss yyyy-MM-dd")
-                    state.tokenExpiresDisp = sdf.format(new Date(state.tokenExpires))
-            } 
+    try {
+        httpPost (requestParams) { resp ->
+            if(debugEnabled)
+                log.debug "${resp.properties} - ${command} - ${resp.getStatus()} "
+            if(resp.getStatus() == 200 || resp.getStatus() == 207){
+                if(resp.data){
+                        Map jsonData = (HashMap) resp.data
+                        state.temp_token = jsonData.access_token
+                        if(debugEnabled) log.debug "Token: ${jsonData.access_token}"
+                        state.tokenExpires = (jsonData.expires_in.toLong()*1000) + new Date().getTime().toLong()
+                        SimpleDateFormat sdf= new SimpleDateFormat("HH:mm:ss yyyy-MM-dd")
+                        state.tokenExpiresDisp = sdf.format(new Date(state.tokenExpires))
+                }
+            } else {
+                log.error "getAuth - ${command} failed, status ${resp.getStatus()}, check API credentials"
+            }
         }
+    } catch(Exception e) {
+        log.error "getAuth - ${command} failed: ${e.message}"
     }
 }
 // End App Authorization
