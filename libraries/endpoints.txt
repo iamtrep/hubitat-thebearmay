@@ -59,6 +59,34 @@
 * Devive    * /device/listJson?capability=capability.* //any valid capability
 * Device    * /device/listJson?capability=device.<driverName> //i.e. HubInformationDriverv3
 * Device    *
+* Device    * // Using POST
+* Device    * /device/update
+* Device    *    with form data (id is required):
+* Device    *    {name: "vMotion"
+* Device    *    label: ""
+* Device    *    zigbeeId: ""
+* Device    *    maxEvents: "11"
+* Device    *    maxStates: "30"
+* Device    *    spammyThreshold: "300"
+* Device    *    deviceNetworkId: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx"
+* Device    *    deviceTypeId: "105"
+* Device    *    deviceTypeReadableType: "User"
+* Device    *    roomId: "0"
+* Device    *    meshEnabled: "false"
+* Device    *    retryEnabled: "false"
+* Device    *    meshFullSync: "on"
+* Device    *    homeKitEnabled: "false"
+* Device    *    locationId: "1"
+* Device    *    hubId: "1"
+* Device    *    groupId: "0"
+* Device    *    dashboardIds: "16"
+* Device    *    tags: ""
+* Device    *    defaultIcon: ""
+* Device    *    notes: ""
+* Device    *    id: "7"
+* Device    *    version: "3"
+* Device    *    controllerType: ""}
+* Device    *
 * Diag	 * Force Update of Diag Tool			
 * Diag	 *   /hub/cloud/updateDiagnosticTool
 * Diag   * 
