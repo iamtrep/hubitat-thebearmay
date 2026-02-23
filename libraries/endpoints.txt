@@ -61,6 +61,7 @@
 * Device    *
 * Device    * // Using POST
 * Device    * /device/update
+* Device    *    Content-Type: application/x-www-form-urlencoded
 * Device    *    with form data (id is required):
 * Device    *    {name: "vMotion"
 * Device    *    label: ""
