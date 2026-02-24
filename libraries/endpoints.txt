@@ -80,7 +80,7 @@
 * Device    *    locationId: "1"
 * Device    *    hubId: "1"
 * Device    *    groupId: "0"
-* Device    *    dashboardIds: "16"
+* Device    *    dashboardIds: "16,350"
 * Device    *    tags: ""
 * Device    *    defaultIcon: ""
 * Device    *    notes: ""
