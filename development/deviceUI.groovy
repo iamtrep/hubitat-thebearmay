@@ -15,7 +15,7 @@
  *    -------------   -------------------    ---------------------------------------------------------
  *    
  */
-static String version()	{  return '0.0.5'  }
+static String version()	{  return '0.0.6'  }
 import java.text.SimpleDateFormat
 import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
@@ -111,6 +111,21 @@ def uiRender(){
                 return
             }
             
+			pContent= buildPage(deviceMap)
+            if(debugEnable) {
+           		pname = "devUIWork${app.id}.htm"
+    			uploadHubFile ("$pname",pContent.getBytes("UTF-8"))
+            }
+            
+            if(selDev){
+            	paragraph "${fullScrn}<table><tr><td><span class='font-bold text-xl'>${selDev.displayName}(${selDev.id})</span></td><td>${ndBtn}</td><td>${resetLO}</td></tr></table>${stoPos}"
+            	paragraph pContent
+            }    
+            if(state.prefDirty)
+            	paragraph '<script>document.getElementById("prefHeader").classList.add("region-header-dirty")</script>'
+            if(state.devInfoDirty)
+            	paragraph '<script>document.getElementById("devInfoHeader").classList.add("region-header-dirty")</script>'
+            
            
             if(state.ndBtnPushed){
                 state.ndBtnPushed = false
@@ -164,24 +179,39 @@ def uiRender(){
             	}
                 paragraph '<script>document.getElementById("prefHeader").classList.remove("region-header-dirty");window.location.reload();</script>'
             }
-            
-            
-            
-            pContent= buildPage(deviceMap)
-           	pname = "devUIWork${app.id}.htm"
-    		uploadHubFile ("$pname",pContent.getBytes("UTF-8"))
-            if(selDev){
-            	paragraph "${fullScrn}<table><tr><td><span class='font-bold text-xl'>${selDev.displayName}(${selDev.id})</span></td><td>${ndBtn}</td><td>${resetLO}</td></tr></table>${stoPos}"
-            	paragraph pContent
-            }    
-            if(state.prefDirty)
-            	paragraph '<script>document.getElementById("prefHeader").classList.add("region-header-dirty")</script>'
-            if(state.devInfoDirty)
-            	paragraph '<script>document.getElementById("devInfoHeader").classList.add("region-header-dirty")</script>'
+            if(state.unschedPushed) {
+                state.unschedPushed = false
+                jId = state.unschedId
+                state.remove('unschedId')
+                removeJob(jId)             
+            }
+
         }
     }
 }
 
+def removeJob(jId){
+	// /hub/advanced/deleteScheduledJob?id=dev1Once.poll1 
+    String jobId= "dev${selDev.id}${state["job$jId"].type}.${state["job$jId"].method}"
+    try{		
+        params = [
+            uri: "http://127.0.0.1:8080/hub/advanced/deleteScheduledJob?id=$jobId",
+            headers: [
+                "Accept": "application/json"
+            ]
+		]
+        if(debugEnabled) 
+        	log.debug "$params"
+        httpGet(params){ resp ->
+            if(debugEnabled) 
+            	log.debug "$resp.data"
+            return resp.data
+		}
+    }catch (e){
+        log.error "$e"
+    }
+    
+}
 
 def appButtonHandler(btn) {
     switch(btn) {
@@ -207,29 +237,34 @@ def appButtonHandler(btn) {
         	break
         default: 
             //state."${btn}Pushed" = true
-            bParms = ''
-        	pList = []
-        	inx=0
-        	settings.sort().each {               
-                if(it.key.startsWith("$btn")){
+            if(btn.startsWith('unsched')){
+                state.unschedPushed = true
+                state.unschedId = btn.substring(7,)
+            } else {
+	            bParms = ''
+    	    	pList = []
+        		inx=0
+        		settings.sort().each {               
+                	if(it.key.startsWith("$btn")){
                  //   log.debug "${it.properties}"
                     
-                	if(inx>0) bParms += ','
-                	bParms=it.value
-                   	pList.add(it.value)
-                    app.removeSetting("$btn$inx")
-                    inx++
-                }
-        	}
+                		if(inx>0) bParms += ','
+                		bParms=it.value
+                   		pList.add(it.value)
+	                    app.removeSetting("$btn$inx")
+    	                inx++
+        	        }
+        		}
         
-        	if(inx > 1)
-        		selDev."$btn"(pList.each{it.value})
-        	else if(inx==1)
-                selDev."$btn"(bParms)
-            else
-                selDev."$btn"()
-       		//log.debug "command selDev.$btn(${pList.each{it.value}}) requested"
-			state.message ="Command Executed"
+	        	if(inx > 1)
+    	    		selDev."$btn"(pList.each{it.value})
+        		else if(inx==1)
+            	    selDev."$btn"(bParms)
+	            else
+    	            selDev."$btn"()
+       			//log.debug "command selDev.$btn(${pList.each{it.value}}) requested"
+                state.message ="Command Executed"
+            }
         	state.refreshNeeded = true
             break
     }
@@ -241,6 +276,8 @@ HashMap jsonResponse(retMap){
 }
 
 String buildPage(deviceMap){
+    if(!selDev)
+    	return
     //log.debug "Build Page"
     String region1 = ''
     String region2 = '<p class="region-subheader">Current States</p>'
@@ -265,8 +302,7 @@ String buildPage(deviceMap){
         it.value=it.value.toString().replace('\"','\\\"')
         region2 += "<p><b>${it.key}:</b> ${it.value}</p>"
     }
-    //region2 += '<br><br><br>'
-    
+        
     region3 = buildPreference(deviceMap.settings)
     region3 += "<br><br><br>"
     savePref = getInputElemStr(name:"savePref", type:'button', width:'10em', radius:'12px', background:'#2596be', title:"<span style='font-weight:bold;color:white'>Save Prefs</span>")
@@ -278,6 +314,10 @@ String buildPage(deviceMap){
     saveDevInf = getInputElemStr(name:"saveDevInf", type:'button', width:'10em', radius:'12px', background:'#2596be', title:"<span style='font-weight:bold;color:white'>Save Dev Info</span>")
     revDevInf = getInputElemStr(name:"resetDevInf", type:'button', width:'10em', radius:'12px', background:'#2596be', title:"<span style='font-weight:bold;color:white'>Reset Dev Info</span>")
     region4 += "<table><tr><td>${saveDevInf}</td><td>${revDevInf}</td></tr></table>"
+    
+   
+   	region5 = buildEventList()
+    region6 = buildJobList(deviceMap.scheduledJobs)
     
     String pContent = ttStyleStr+html1+region1+html2+region2+html3+region3+html4+region4+html5+region5+html6+region6+html7   
     if(settings["savePos"])
@@ -345,7 +385,8 @@ String buildCommandBlock(parms){
         }    
 		cBlock+= "$params"
     } else if(parms.arguments){
-        log.debug "Found ${parms?.arguments?.size()} arguments"
+        if(debugEnabled)
+        	log.debug "Found ${parms?.arguments?.size()} arguments"
     }
 	cBlock+="$btn</div>"
 
@@ -547,14 +588,46 @@ def saveDevInfo(deviceMap) {
             followRedirects:false,
             body: bodyContent
 		]
-    log.debug params
+        if(debugEnabled)
+    		log.debug params
     	httpPost(params) { resp ->  }
     }catch (e){
         log.error "$e"
     }
-//    state.resetDevInfPushed = true
+    state.resetDevInfPushed = true
 
 
+}
+
+String buildEventList() {
+    eList = selDev.events([max:settings['devInfMaxEvent']])
+    eTable = '<style>table{border:solid 1px black;}td, th{padding:5px;border:1px solid lightGray;}</style><table><tr><th>Date</th><th>Name</th><th>Value</th><th>Unit</th><th>Description</th><th>Descriptive Text</th><th>Source</th></tr>'
+    SimpleDateFormat sdfIn = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS")
+    SimpleDateFormat sdfOut = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss.SSS a")
+    eList.each {
+        eDate = sdfIn.parse("${it.date}")
+        eTable += "<tr><td>${sdfOut.format(eDate)}</td><td>${it.name}</td><td>${it.value}</td><td>${it.unit?:''}</td><td>${it.description?.replace('<','&lt;')?:''}</td><td>${it.descriptionText?.replace('<','&lt;')?:''}</td><td>${it.source}</td></tr>"
+    }
+    eTable +='</table>'
+    
+    return eTable
+    
+}
+
+String buildJobList(jList) {
+    String removeIcon = "<i class='material-icons he-bin'></i>"
+    jTable = '<style>table{border:solid 1px black;}td, th{padding:5px;border:1px solid lightGray;}</style><table><tr><th>Name</th><th>Schedule</th><th>Next</th><th>Previous</th><th>Status</th><th></th></tr>'
+    SimpleDateFormat sdfIn = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ")
+    SimpleDateFormat sdfOut = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss.SSS a")
+    inx = 0
+    jList.each {
+        state["job$inx"] = [id:inx, method:"${it.handler}", nRun:"${it.nextRunTime}", type:("${it.schedule}" == "Once") ? "Once" : "Recur"] 
+        delBtn = getInputElemStr(type:"button",name:"unsched$inx", title:"$removeIcon", color:"#ff0000", width:"26px")
+        jTable+="<tr><td>${it.handler}</td><td>${it.schedule}</td><td>${sdfOut.format(sdfIn.parse(it.nextRunTime))}</td><td>${(it.prevRunTime) ? sdfOut.format(sdfIn.parse(it.prevRunTime)):""}</td><td>${it.status}</td><td>$delBtn</td></tr>"
+        inx++
+    }
+    jTable+='<table>'
+    return jTable
 }
 
 def getDriverData(dId){
