@@ -138,7 +138,8 @@
 * Hub Vars    * /installedapp/configure/json/<ID of HubVar app>/hubVar
 * Hub Vars    *
 * Jobs	* Delete Pending Jobs			
-* Jobs	* /hub/advanced/deleteAppJobs/<app/dev ID>			
+* Jobs	* /hub/advanced/deleteAppJobs/<app/dev ID>
+* Jobs  * /hub/advanced/deleteScheduledJob?id=<dev/app><app/dev id><Once/Recur>.<methodName>
 * Jobs	*
 * Libraries    *
 * Libraries    * /hub2/userLibraries
