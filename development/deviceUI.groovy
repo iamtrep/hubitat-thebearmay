@@ -15,8 +15,8 @@
  *    -------------   -------------------    ---------------------------------------------------------
  *    
  */
-static String version()	{  return '0.0.4'  }
-
+static String version()	{  return '0.0.5'  }
+import java.text.SimpleDateFormat
 import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
 import groovy.transform.Field
@@ -100,11 +100,12 @@ def uiRender(){
             ndBtn = getInputElemStr(name:"newDev", type:'button', width:'10em', radius:'12px', background:'#2596be', title:"<span style='font-weight:bold;color:white'>Change Device</span>")
 			stoPos = getInputElemStr(name:"savePos", type:'hidden', width:'1em', radius:'12px', background:'#2596be', title:"", submitOnChange:true, defaultValue:"")
             resetLO = getInputElemStr(name:"resetLayout", type:'button', width:'10em', radius:'12px', background:'#2596be', title:"<span style='font-weight:bold;color:white'>Reset Layout</span>")
-            String fullScrn = "<script>document.getElementById('divSideMenu').setAttribute('style','display:none !important');document.getElementById('divMainUIHeader').setAttribute('style','height: 0 !important;');document.getElementById('divMainUIContent').setAttribute('style','padding: 0 !important;');document.getElementById('divMainUIFooter').setAttribute('style','display:none !important');contentHeight = Math.round(window.innerHeight * 1.2);document.getElementById('divMainUIContentContainer').setAttribute('style', 'background: white; height: ' + contentHeight + 'px !important;');document.getElementById('divLayoutControllerL2').setAttribute('style', 'height: ' + contentHeight + 'px !important;');</script><style>overflow-y: scroll !important;</style>"
+            
 
-            if(selDev)
+            if(selDev){
             	devId = selDev.id
-            else{
+                deviceMap = getDevice(devId)
+            } else {
                 inx = appLocation().lastIndexOf("/")
                 paragraph "<script>window.location.replace('${appLocation().substring(0,inx)}')</script>"
                 return
@@ -132,15 +133,41 @@ def uiRender(){
                     if(it.key.startsWith('pref')) {
                         nKey = it.key.substring(4,).trim()
                         sType = app.getSettingType("${it.key}")
-                        log.debug "$nKey $sType ${it.value}"
+                        //log.debug "$nKey $sType ${it.value}"
                         selDev.updateSetting("${nKey}",[value:"${it.value}".trim(),type:"$sType"])
                     }
             	}
                 paragraph "<script>window.location.reload();</script>"
-                
+            }
+            if(state.resetPrefPushed){
+                state.resetPrefPushed = false
+                settings.each{                 
+                    if(it.key.startsWith('pref')) {
+ 						app.removeSetting("${it.key}")
+                    }
+            	}
+                paragraph '<script>document.getElementById("prefHeader").classList.remove("region-header-dirty");window.location.reload();</script>'
             }
             
-            pContent= buildPage(devId)
+            if(state.saveDevInfPushed){
+                state.devInfoDirty = false
+                state.saveDevInfPushed = false               
+				saveDevInfo(deviceMap)
+                paragraph "<script>window.location.reload();</script>"
+            }
+            if(state.resetDevInfPushed){
+                state.resetDevInfPushed = false
+                settings.each{                 
+                    if(it.key.startsWith('devInf')) {
+ 						app.removeSetting("${it.key}")
+                    }
+            	}
+                paragraph '<script>document.getElementById("prefHeader").classList.remove("region-header-dirty");window.location.reload();</script>'
+            }
+            
+            
+            
+            pContent= buildPage(deviceMap)
            	pname = "devUIWork${app.id}.htm"
     		uploadHubFile ("$pname",pContent.getBytes("UTF-8"))
             if(selDev){
@@ -149,6 +176,8 @@ def uiRender(){
             }    
             if(state.prefDirty)
             	paragraph '<script>document.getElementById("prefHeader").classList.add("region-header-dirty")</script>'
+            if(state.devInfoDirty)
+            	paragraph '<script>document.getElementById("devInfoHeader").classList.add("region-header-dirty")</script>'
         }
     }
 }
@@ -165,6 +194,16 @@ def appButtonHandler(btn) {
         case 'savePref':
         	state.message = 'Saving'
         	state.savePrefPushed = true
+        	break
+        case "resetPref":
+        	state.resetPrefPushed = true
+        	break
+        case 'saveDevInf':
+        	state.message = 'Saving'
+        	state.saveDevInfPushed = true
+        	break
+        case "resetDevInf":
+        	state.resetDevInfPushed = true
         	break
         default: 
             //state."${btn}Pushed" = true
@@ -201,7 +240,8 @@ HashMap jsonResponse(retMap){
     return JsonOutput.toJson(retMap)
 }
 
-String buildPage(devId){
+String buildPage(deviceMap){
+    //log.debug "Build Page"
     String region1 = ''
     String region2 = '<p class="region-subheader">Current States</p>'
     String region3 = ''
@@ -209,12 +249,12 @@ String buildPage(devId){
     String region5 = ''              
     String region6 = ''
     
-    deviceMap = getDevice(devId)
+    //deviceMap = getDevice(devId)
 
     deviceMap.commands.sort{it.name}.each {
 	   	region1 += buildCommandBlock(it)
     }
-    region1 += '<br><br><br>'
+    //region1 += '<br><br><br>'
     
     deviceMap.device.currentStates.sort().each{
 	    it.value.stringValue=it.value.stringValue.replace('\"','\\\"')
@@ -225,12 +265,19 @@ String buildPage(devId){
         it.value=it.value.toString().replace('\"','\\\"')
         region2 += "<p><b>${it.key}:</b> ${it.value}</p>"
     }
-    region2 += '<br><br><br>'
+    //region2 += '<br><br><br>'
     
     region3 = buildPreference(deviceMap.settings)
     region3 += "<br><br><br>"
     savePref = getInputElemStr(name:"savePref", type:'button', width:'10em', radius:'12px', background:'#2596be', title:"<span style='font-weight:bold;color:white'>Save Prefs</span>")
-    region3 += savePref+"<br><br><br>"
+    revPref = getInputElemStr(name:"resetPref", type:'button', width:'10em', radius:'12px', background:'#2596be', title:"<span style='font-weight:bold;color:white'>Reset Prefs</span>")
+    region3 += "<table><tr><td>${savePref}</td><td>${revPref}</td></tr></table>"
+    
+    region4 = buildDevInfo(deviceMap)
+    region4 += "<br><br><br>"
+    saveDevInf = getInputElemStr(name:"saveDevInf", type:'button', width:'10em', radius:'12px', background:'#2596be', title:"<span style='font-weight:bold;color:white'>Save Dev Info</span>")
+    revDevInf = getInputElemStr(name:"resetDevInf", type:'button', width:'10em', radius:'12px', background:'#2596be', title:"<span style='font-weight:bold;color:white'>Reset Dev Info</span>")
+    region4 += "<table><tr><td>${saveDevInf}</td><td>${revDevInf}</td></tr></table>"
     
     String pContent = ttStyleStr+html1+region1+html2+region2+html3+region3+html4+region4+html5+region5+html6+region6+html7   
     if(settings["savePos"])
@@ -241,6 +288,7 @@ String buildPage(devId){
 }
 
 HashMap getDevice(devId){
+    //log.debug "getDevice($devId)"
 	try{		
         params = [
             uri: "http://127.0.0.1:8080/device/fullJson/$devId",
@@ -262,6 +310,7 @@ HashMap getDevice(devId){
 }
 
 String buildCommandBlock(parms){
+    //log.debug "buildCommandBlock"
     
     LinkedList textType=["text","number","decimal","date","time","password","color"]
     String cBlock = ''
@@ -306,9 +355,11 @@ String buildCommandBlock(parms){
 
 
 String buildPreference(pSet){
+    //log.debug "buildPreferenceList($pSet)"
     ArrayList textType=["text","number","decimal","date","time","password","color"]
     pBlock = ''
     state.prefDirty = false
+
     pSet.each {
         if (it.options) {
             //optsWork = "${it.options}".replace('[','').replace(']','').split(',')
@@ -331,10 +382,8 @@ String buildPreference(pSet){
         
         if (it.type == 'string') 
         	it.type = 'text'
-        
-     //   if(textType.contains(pType)) {
-            pBlock +=getInputElemStr( [name:"pref${it.name}", type:"${it.type}", title:"<b>${it.title}</b>", width:"35em", background:"#ADD8E6", radius:"15px", options:optsWork, defaultValue:defVal, submitOnChange:true ])
-       // }
+        tLen = (it.title.size()) * 0.75
+		pBlock +=getInputElemStr( [name:"pref${it.name}", type:"${it.type}", title:"<b>${it.title}</b>", background:"#ADD8E6", width:"${tLen}em",radius:"15px", options:optsWork, defaultValue:defVal, submitOnChange:true ])
        
         if(it.type == 'enum') {
         	pBlock +="</div>" // need to determine why this is needed
@@ -344,6 +393,224 @@ String buildPreference(pSet){
     return pBlock
     
 }
+
+String buildDevInfo(deviceMap) {
+    //log.debug "buildDevInfo"
+    dMap = deviceMap.device
+	state.devInfoDirty = false
+    diBlock = ''
+    driverList = getDrivers().drivers
+    roomsList = getRooms()
+    ArrayList dList = []
+    ArrayList rList = []
+    ArrayList dashList = []
+    ArrayList dashSelList = []
+    driverList.sort{it.name}.each {
+        dList.add("${it.id}:${it.name}")
+    }
+    if(roomsList) {
+    	roomsList.sort{it.name}.each {
+        	rList.add("${it.id}:${it.name}")
+    	}
+    }
+    deviceMap.dashboards.sort{it.name}.each{
+        dashList.add("${it.id}:${it.name}")
+        if(it.selected)
+        	dashSelList.add("${it.id}")
+    }
+    dVal = settings["devInfName"]?:dMap.name
+    if(dVal != dMap.name) {
+        state.lastDirty = 'displayName'
+    	state.devInfoDirty = true
+	}
+    diBlock += "<table><tr><td>"+getInputElemStr( [name:"devInfName", type:"text", title:"<b>Device Name</b>", width:"20em", background:"#ADD8E6", radius:"15px", submitOnChange:true, defaultValue:"${dVal}" ])
+    dVal = settings["devInfLabel"]?:dMap.label?:""
+	if(dVal != dMap.label && dMap.label != null) {
+        state.lastDirty = 'label'
+    	state.devInfoDirty = true
+	}
+    diBlock += "</td><td>"+getInputElemStr( [name:"devInfLabel", type:"text", title:"<b>Device Label</b>", width:"20em", background:"#ADD8E6", radius:"15px", submitOnChange:true, defaultValue:"${dVal}" ])
+    dVal = settings["devInfDNI"]?:dMap.deviceNetworkId
+    if(dVal != dMap.deviceNetworkId) {
+        state.lastDirty = 'DNI'
+    	state.devInfoDirty = true
+	}
+    diBlock += "</td><td>"+getInputElemStr( [name:"devInfDNI", type:"text", title:"<b>Device Network ID</b>", width:"20em", background:"#ADD8E6", radius:"15px", submitOnChange:true, defaultValue:"${dVal}" ])
+    dVal = settings["devInfDevTypeId"]?:dMap.deviceTypeId
+    if("$dVal" != "${dMap.deviceTypeId}") {
+        state.lastDirty = 'deviceTypeId'
+    	state.devInfoDirty = true
+	}       
+    diBlock += "</td></tr><tr><td>"+getInputElemStr( [name:"devInfDevTypeId", type:"enum", title:"<b>Device Type</b>", width:"20em", background:"#ADD8E6", radius:"15px", options:dList, submitOnChange:true, defaultValue:"${dVal}" ])+"</div>"
+    dVal = settings["devInfRoom"]?:dMap.roomId?:""
+    if("$dVal" != "${dMap.roomId}" && dMap.roomId != null) {
+        state.lastDirty = 'roomId'
+    	state.devInfoDirty = true
+	} 
+    diBlock += "</td><td>"+getInputElemStr( [name:"devInfRoom", type:"enum", title:"<b>Room</b>", width:"20em", background:"#ADD8E6", radius:"15px", options:rList, submitOnChange:true, defaultValue:"${dVal}" ])+"</div>"
+    dVal = settings["devInfDash"]?:dashSelList?:""
+    if(dVal != dashSelList && dashSelList != []) {
+        state.lastDirty = "dashSelList $dval $dashSelList"
+    	state.devInfoDirty = true
+	} 
+    diBlock += "</td><td>"+getInputElemStr( [name:"devInfDash", type:"enum", title:"<b>Dashboards</b>", width:"20em", background:"#ADD8E6", radius:"15px", options:dashList, submitOnChange:true, defaultValue:dVal, multiple:true ])+"</div>"
+    dVal = settings["devInfMaxEvent"]?:dMap.maxEvents?:11
+    if(dVal != dMap.maxEvents && dMap.maxEvents != null) {
+        state.lastDirty = 'maxEvents'
+    	state.devInfoDirty = true
+	}
+    diBlock += "</td></tr><tr><td>"+getInputElemStr( [name:"devInfMaxEvent", type:"number", title:"<b>Max Events</b><br><span style='font-size:smaller'>* per event type (1-2000)</span>", width:"20em", background:"#ADD8E6", radius:"15px", submitOnChange:true, defaultValue:dVal ])
+    dVal = settings["devInfMaxStates"]?:dMap.maxStates?:30
+    if(dVal != dMap.maxStates && dMap.maxStates != null) {
+        state.lastDirty = 'maxStates'
+    	state.devInfoDirty = true
+	}
+    diBlock += "</td><td>"+getInputElemStr( [name:"devInfMaxStates", type:"number", title:"<b>State History Size</b><br><span style='font-size:smaller'>* per attribute (1-2000)</span>", width:"20em", background:"#ADD8E6", radius:"15px", submitOnChange:true, defaultValue:dVal ])    
+    dVal = settings["devInfSpammy"]?:dMap.spammyThreshold?:300
+    if(dVal != dMap.spammyThreshold && dMap.spammyThreshold != null) {
+        state.lastDirty = 'spammyThreshold'
+    	state.devInfoDirty = true
+	}
+    diBlock += "</td><td>"+getInputElemStr( [name:"devInfSpammy", type:"number", title:"<b>Too many events alert threshold</b><br><span style='font-size:smaller'>* per hour (100-2000)</span>", width:"20em", background:"#ADD8E6", radius:"15px", submitOnChange:true, defaultValue:dVal ])
+    dVal = settings["devInfMeshEnabled"]?:dMap.meshEnabled?:false
+	if(dVal != dMap.meshEnabled && dMap.meshEnabled != null) {
+        state.lastDirty = 'meshEnabled'
+    	state.devInfoDirty = true
+	}
+    diBlock += "</td></tr><tr><td>"+getInputElemStr( [name:"devInfMeshEnabled", type:"bool", title:"<b><a href='https://docs2.hubitat.com/en/user-interface/settings/hub-mesh'>Hub Mesh</a> Enabled</b>", width:"20em", background:"#ADD8E6", radius:"15px", submitOnChange:true, defaultValue:dVal ])
+    dVal = settings["devInfHomeKitEnabled"]?:dMap.homeKitEnabled?:false
+    if(dVal != dMap.homeKitEnabled && dMap.homeKitEnabled != null) {
+        state.lastDirty = 'homeKitEnabled'
+    	state.devInfoDirty = true
+	}
+    diBlock += "</td><td>"+getInputElemStr( [name:"devInfHomeKitEnabled", type:"bool", title:"<b><a href='https://docs2.hubitat.com/en/apps/homekit-integration'>HomeKit</a> Enabled</b>", width:"20em", background:"#ADD8E6", radius:"15px", submitOnChange:true, defaultValue:dVal ])
+    dVal = settings["devInfNotes"]?:dMap.notes?:''
+    if(dVal != dMap.notes && dMap.notes != null){ 
+        state.lastDirty = 'notes'
+    	state.devInfoDirty = true
+	}
+    diBlock += "</td></tr></table>"+getInputElemStr( [name:"devInfNotes", type:"text", title:"<b>Device Note</b>", width:"20em", background:"#ADD8E6", radius:"15px", submitOnChange:true, defaultValue:"${dVal}" ]) 
+    String notesBlock = ''
+    dMap.data.each{
+        notesBlock += "<b>${it.key}</b>:${it.value}<br>"
+    }
+    
+    SimpleDateFormat sdfIn = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ")
+    cDate = sdfIn.parse(dMap.createTime)
+    notesBlock += "<br><b>Create Date</b>: $cDate<br>"
+    cDate = sdfIn.parse(dMap.updateTime)
+	notesBlock += "<b>Last Update</b>: $cDate<br>"
+    cDate = sdfIn.parse(dMap.lastActivityTime)
+	notesBlock += "<b>Last Activity</b>: $cDate<br><br>"   
+    diBlock += "<br><b>Device Data</b><br><div style='border:1px black solid; border-radius:15px;padding:5px;'>$notesBlock</div>"
+    
+    return diBlock
+}
+
+def saveDevInfo(deviceMap) {
+    //log.debug "saveDevInfo"
+    driverData = getDriverData(settings['devInfDevTypeId'])
+    //log.debug "Driver Data:<br>$driverData"
+	bodyContent = [
+        name: "${settings['devInfName']}",
+		label: "${settings['devInfLabel']}",
+		zigbeeId: "${deviceMap.device.zigbeeId}",
+		maxEvents: "${settings['devInfMaxEvent']}",
+		maxStates: "${settings['devInfMaxStates']}",
+		spammyThreshold: "${settings['devInfSpammy']}",
+		deviceNetworkId: "${settings['devInfDNI']}",
+		deviceTypeId: "${settings['devInfDevTypeId']}",
+		deviceTypeReadableType: (driverData.type == 'sys') ? 'System':'User',
+		roomId: "${settings['devInfRoom']}",
+		meshEnabled: "${settings['devInfMeshEnabled']}",
+        retryEnabled: "${deviceMap.device.retryEnabled}",
+		meshFullSync: "${deviceMap.device.meshFullSync}",
+		homeKitEnabled: "${settings['devInfHomeKitEnabled']}",
+		locationId: "${deviceMap.device.locationId}",
+		hubId: "${deviceMap.device.hubId}",
+		groupId: "${deviceMap.device.groupId}",
+		dashboardIds: "${settings['devInfDash']}",
+		tags: (deviceMap.device.tags != null) ? "${deviceMap.device.tags}" : "",
+		defaultIcon: "${deviceMap.device.defaultIcon}",
+		notes: "${settings['devInfNotes']}",
+		id: "${selDev.id}",
+        version: "${driverData.version}",
+		controllerType: "${deviceMap.device.controllerType}"	
+	]
+  
+	try{		
+        params = [
+            uri: "http://127.0.0.1:8080/device/update",
+            headers: [
+                "Content-Type": "application/x-www-form-urlencoded"
+            ],
+            followRedirects:false,
+            body: bodyContent
+		]
+    log.debug params
+    	httpPost(params) { resp ->  }
+    }catch (e){
+        log.error "$e"
+    }
+//    state.resetDevInfPushed = true
+
+
+}
+
+def getDriverData(dId){
+    //log.debug "getDriverData($dId)"
+    dMap = getDrivers().drivers
+    def holdIt
+    inx = 0
+    dMap.each {
+        if("${it.id}" == "$dId"){
+        	holdIt = it     
+        }
+    }
+    return holdIt
+}
+
+def getDrivers(){
+	try{		
+        params = [
+            uri: "http://127.0.0.1:8080/device/drivers",
+            headers: [
+                "Accept": "application/json"
+            ]
+		]
+        if(debugEnabled) 
+        	log.debug "$params"
+        httpGet(params){ resp ->
+            if(debugEnabled) 
+            	log.debug "$resp.data"
+            return resp.data
+		}
+    }catch (e){
+        log.error "$e"
+    }
+    
+}
+                                 
+ArrayList getRooms(){
+	try{		
+        params = [
+            uri: "http://127.0.0.1:8080/room/listRoomsJson",
+            headers: [
+                "Accept": "application/json"
+            ]
+		]
+        if(debugEnabled) 
+        	log.debug "$params"
+        httpGet(params){ resp ->
+            if(debugEnabled) 
+            	log.debug "$resp.data"
+            return resp.data
+		}
+    }catch (e){
+        log.error "$e"
+    }
+    
+}                                 
 
 String reverseCamel(sVal){
     String result = '' 
@@ -382,32 +649,27 @@ String reverseCamel(sVal){
             height: calc(100vh - 40px);
         }
 
-		.btnContainer {
-			display:flex;
-			visibility:hidden;
-			gap:10px
+		.toggleBtn {
+    		background: none;
+		    border: none;
+		    color: white;
+    		cursor: pointer;
+    		font-size: 16px;
+    		padding: 0 5px;
+    		line-height: 1;
+    		font-weight: bold;
 		}
-		
-		.layout-btn {
-            //bottom: 20px;
-            //float:left;
-            background: white;
-            color: #667eea;
-            border: none;
-            padding: 10px 20px;
-			margin-right:5px;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            transition: all 0.2s;
-        }
 
-        .layout-btn:hover {
-            background: #667eea;
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+		.toggleBtn:hover {
+    		color:red;
+		}
+
+		.region.collapsed .region-content {
+    		display: none;
+		}
+
+		.region.collapsed .resize-handle {
+    		display: none;
 		}
 
         .region {
@@ -424,6 +686,17 @@ String reverseCamel(sVal){
             transition: box-shadow 0.2s;
         }
 
+		.region {
+    		display: flex !important;
+    		flex-direction: column !important;
+    		padding: 0 !important;
+		}
+
+		.region-content {
+    		flex: 1;
+    		overflow: auto;
+		}
+
         .region:hover {
             box-shadow: 0 10px 15px rgba(0, 0, 0, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1);
         }
@@ -437,7 +710,6 @@ String reverseCamel(sVal){
         }
 
         .region-header {
-
 			-webkit-user-select: none;
 			touch-action: none;
             background: linear-gradient(135deg, #2596be 0%, #bbbbcc 100%);
@@ -449,6 +721,7 @@ String reverseCamel(sVal){
             justify-content: space-between;
             align-items: center;
         }
+
 		
 		.region-header-dirty {
 			background: linear-gradient(135deg, #ff9625 0%, #ccbbbb 100%);
@@ -518,16 +791,37 @@ String reverseCamel(sVal){
             transform: translateY(-2px);
             box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
         }
+
+
+
     </style>
 	<script>
+		function toggleRegion(btn) {
+			//alert(btn.parentElement.parentElement.id);
+			event.stopPropagation()
+		    const region = document.getElementById(btn.parentElement.parentElement.id);
+			if(region.classList.contains('collapsed')){
+				//alert("case collasped")
+				btn.innerText = '-';
+				region.classList.remove('collapsed');
+				savePos()
+			} else { 
+				//alert("case expanded")
+				btn.innerText = '+';
+				region.classList.add('collapsed');
+				savePos();
+			}
+		}
+
 		function savePos(){
 			saveStr = '';
 			const regionList = ["region-1","region-2","region-3","region-4","region-5","region-6"];
 			for(i=0;i<regionList.length;i++){
 				tRegion = document.getElementById(regionList[i]);
-				saveStr += regionList[i]+':{'+tRegion.style.left+','+tRegion.style.top+','+tRegion.style.width+','+tRegion.style.height+','+tRegion.style.zIndex+'};';
+				const collapsed = tRegion.classList.contains('collapsed') ? '1' : '0';
+				saveStr += regionList[i]+':{'+tRegion.style.left+','+tRegion.style.top+','+tRegion.style.width+','+tRegion.style.height+','+tRegion.style.zIndex+ ',' + collapsed+'};';
+				//alert("saving "+regionList[i]+":"+collapsed)
 			}
-			//document.getElementById('saveArea').value = saveStr;
 			document.getElementById('settings[savePos]').value = saveStr;
 			changeSubmit(document.getElementById('settings[savePos]'))
 		}
@@ -545,19 +839,26 @@ String reverseCamel(sVal){
 				elem.style.height = xyVals[3];
 				elem.style.zIndex = xyVals[4];
 				maxZIndex = Math.max(maxZIndex, parseInt(xyVals[4]) || 0);
+				// Restore collapsed state if saved
+        		if (xyVals[5] == '1') {
+            		elem.classList.add('collapsed');
+	            	const btn = elem.querySelector('.toggleBtn');
+    	        	if (btn) btn.textContent = '+';
+        		} else {
+            		elem.classList.remove('collapsed');
+            		const btn = elem.querySelector('.toggleBtn');
+		           	if (btn) btn.textContent = '−';
+    	    	}
 			}
+
+
 		}
 	</script>
-	<div class='btnContainer'>
-    	<button class="layout-btn" id="resetBtn">Reset Positions</button>
-		<input id='saveArea' />
-		<button onClick='savePos()' class="layout-btn">Save Layout</button>
-		<button onClick="parseStr(document.getElementById('saveArea').value)" class="layout-btn">Restore Layout</button>
-	</div>
     <div class="container" id="container">
         <div class="region" id="region-1">
             <div class="region-header">
                 <div class="region-title">Commands</div>
+				<span class="toggleBtn" onclick="toggleRegion(this)" ontouchstart="toggleRegion(this)">-</span>
             </div>
             <div class="region-content">
 '''
@@ -569,6 +870,7 @@ String reverseCamel(sVal){
         <div class="region" id="region-2">
             <div class="region-header">
                 <div class="region-title">States</div>
+				<span class="toggleBtn" onclick="toggleRegion(this)" ontouchstart="toggleRegion(this)">-</span>
             </div>
             <div class="region-content">
 '''
@@ -580,6 +882,7 @@ String reverseCamel(sVal){
         <div class="region" id="region-3">
             <div class="region-header" id='prefHeader'>
                 <div class="region-title">Preferences</div>
+				<span class="toggleBtn" onclick="toggleRegion(this)" ontouchstart="toggleRegion(this)">-</span>
             </div>
             <div class="region-content">
 '''
@@ -589,8 +892,9 @@ String reverseCamel(sVal){
         </div>
 
         <div class="region" id="region-4">
-            <div class="region-header">
+            <div class="region-header" id="devInfoHeader">
                 <div class="region-title">Device Info</div>
+				<span class="toggleBtn" onclick="toggleRegion(this)" ontouchstart="toggleRegion(this)">-</span>
             </div>
             <div class="region-content">
 '''
@@ -602,6 +906,7 @@ String reverseCamel(sVal){
         <div class="region" id="region-5">
             <div class="region-header">
 				<div class="region-title">Events</div>
+				<span class="toggleBtn" onclick="toggleRegion(this)" ontouchstart="toggleRegion(this)">-</span>
         	</div>
             <div class="region-content">
 '''
@@ -613,6 +918,7 @@ String reverseCamel(sVal){
         <div class="region" id="region-6">
             <div class="region-header">
                 <div class="region-title">Scheduled Jobs</div>
+				<span class="toggleBtn" onclick="toggleRegion(this)" ontouchstart="toggleRegion(this)">-</span>
             </div>
             <div class="region-content">
 '''
@@ -737,6 +1043,7 @@ draggableRegions.forEach(regionId => {
     document.addEventListener('touchmove', onResizeMove, { passive: false });
     document.addEventListener('mouseup', onResizeEnd);
     document.addEventListener('touchend', onResizeEnd);
+
 });
 //end 260214
 
@@ -774,6 +1081,7 @@ draggableRegions.forEach(regionId => {
 *	04Apr2025							Size option for icons
 *	23May2025							Add device.<driverName> to capability
 *   07Oct2025							Added textarea uiType
+*	20Feb2026							Minor enhancements and added 'hidden' as a valid input field type
 */
 
 import groovy.transform.Field
@@ -1087,14 +1395,22 @@ String inputEnum(HashMap opt){
     retVal += "<div style='${computedStyle}'><select id='settings[${opt.name}]' ${mult} name='settings[${opt.name}]' class='selectpicker form-control mdl-switch__input submitOnChange SumoUnder' placeholder='Click to set' data-default='' tabindex='-1' style='${computedStyle}'></div>"
     ArrayList selOpt = []
 	if(settings["${opt.name}"]){
-        if("${settings["${opt.name}"].class}" == 'class java.lang.String')
-        	selOpt.add("${settings["${opt.name}"]}")
-       else {               
+        if("${settings["${opt.name}"].class}" == 'class java.lang.String' || "${settings["${opt.name}"].class}" == 'class org.codehaus.groovy.runtime.GStringImpl'){
+           	selOpt.add("${settings["${opt.name}"]}")
+        } else {
         	settings["${opt.name}"].each{
             	selOpt.add("$it")
         	}
        }
-    } else if(opt.defaultValue) selOpt.add("${opt.defaultValue}")
+    } else if(opt.defaultValue) {
+        if("${opt.defaultValue.class}" == 'class java.lang.String' || "${opt.defaultValue.class}" == 'class org.codehaus.groovy.runtime.GStringImpl')
+        	selOpt.add("${opt.defaultValue}")
+        else {
+ 			opt.defaultValue.each {
+              	selOpt.add("$it")
+            }
+        }
+    }
     if(mult != 'multiple') retVal+="<option value=''>Click to set</option>"
     opt.options.each{ option -> 
         colonCount = "$option".count(':')
@@ -1115,7 +1431,7 @@ String inputEnum(HashMap opt){
         }
         sel = ' '
         selOpt.each{
-            //log.debug "$it $optVal ${"$it".trim() == "$optVal".trim()}"
+            //	log.debug "|$it| |$optVal| ${"$it".trim() == "$optVal".trim()}"
             if("$it".trim() == "$optVal".trim() ) 
             	sel = 'selected'
         }
@@ -1399,6 +1715,6 @@ String listTable() {
     ...
 }
 */
-	
+@Field static String fullScrn = "<script>document.getElementById('divSideMenu').setAttribute('style','display:none !important');document.getElementById('divMainUIHeader').setAttribute('style','height: 0 !important;');document.getElementById('divMainUIContent').setAttribute('style','padding: 0 !important;');document.getElementById('divMainUIFooter').setAttribute('style','display:none !important');contentHeight = Math.round(window.innerHeight * 1.2);document.getElementById('divMainUIContentContainer').setAttribute('style', 'background: white; height: ' + contentHeight + 'px !important;');document.getElementById('divLayoutControllerL2').setAttribute('style', 'height: ' + contentHeight + 'px !important;');</script><style>overflow-y: scroll !important;</style>"	
 @Field static String ttStyleStr = "<style>.tTip {display:inline-block;}.tTip .tTipText {display:none;border-radius: 6px;padding: 5px 0;position: absolute;z-index: 1;}.tTip:hover .tTipText {display:inline-block;background-color:yellow;color:black;text-align:left;}</style>"
 @Field static String tableStyle = "<style>.mdl-data-table tbody tr:hover{background-color:inherit} .tstat-col td,.tstat-col th { padding:8px 8px;text-align:center;font-size:12px} .tstat-col td {font-size:15px; padding:8px 8px 8px 8px;white-space: nowrap;} tr {border-right:2px solid black;}</style>"
