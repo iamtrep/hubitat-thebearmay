@@ -19,6 +19,7 @@
  *    18Sep2023    thebearmay    Add Debug Logging option
  *    23Oct2023    thebearmay    Add serverIp as an atttribute
  *    18Nov2024    thebearmay    HE 2.4.0.x changes
+ *	  28Jul2026					 Fix integer overflow on next refresh calculation
  */
 
 import java.text.SimpleDateFormat
@@ -32,7 +33,7 @@ import groovy.transform.Field
 
 
 @SuppressWarnings('unused')
-static String version() {return "0.0.6"} 
+static String version() {return "0.0.7"} 
 
 metadata {
     definition (
@@ -116,6 +117,7 @@ def updated(){
         runIn(1800,"logsOff")
 }
 void processPage(){
+    //log.debug "processPage()"
     app = findPage()
     if(app==-1) {
         log.error "Echo Speaks not Installed"
@@ -130,8 +132,9 @@ void processPage(){
         dWork.replace('<','')
         dWork=dWork.split(' ')
         dWork.each{
-            if(debugEnable) "Refresh Split Each: $it"
-            if(it.isNumber()) updateAttr("cookieRefreshDays",it.toInteger())
+            if(debugEnable) 
+            	log.debug "Refresh Split Each: $it"
+            if(it.isNumber()) updateAttr("cookieRefreshDays",it.toLong())
         }
         dWork = pData.substring(pData.indexOf('serverDataMap'),pData.indexOf('serverDataMap')+800)
         dWork = dWork.substring(dWork.indexOf('{'),dWork.indexOf('}')+1)
@@ -162,9 +165,11 @@ void processJsonData(app){
     jData=readJsonPage("http://127.0.0.1:8080/installedapp/statusJson/$app") 
     cookieRefreshDays = 0
     jData.appSettings.each {
-        if(it.name == "cookieRefreshDays"){
-            cookieRefreshDays = it.value.toInteger()
+        //log.debug "${it.name}:${it.value}"
+        if(it.name.trim() == "refreshCookieDays"){
+            cookieRefreshDays = it.value.toLong()
             updateAttr("cookieRefreshDays",cookieRefreshDays)
+            //log.debug "cookieRefreshDays: $cookieRefreshDays"
         }
     }
     def cookieData = ''
@@ -258,8 +263,10 @@ void refreshHTML(){
     wkStr2 = wkStr
     wkStr+="<tr><td>Last Refresh: ${serverData.lastCookieRrshDt}</td></tr>"
     startDate = Date.parse("E MMM dd HH:mm:ss z yyyy", serverData.lastCookieRrshDt).getTime()
-    nextDate = startDate + (86400000 * device.currentValue("cookieRefreshDays").toInteger())
-    //log.debug "$tNow $nextDate"
+    nextDate = startDate + (86400000 * device.currentValue("cookieRefreshDays",true).toLong())
+    
+    //log.debug "Now:$tNow Start:$startDate $nextDate ${device.currentValue("cookieRefreshDays",true)}"
+    
     SimpleDateFormat sdf = new SimpleDateFormat("E MMM dd HH:mm:ss z yyyy")
     if(nextDate > tNow){
         wkStr+="<tr><td>Next Refresh: ${sdf.format(nextDate)}</td></tr>"
@@ -315,12 +322,12 @@ String nextCookieRefreshDur() {
     Long tNow = new Date().getTime()
     def jSlurp = new JsonSlurper()
     serverData = jSlurp.parseText(device.currentValue("serverData",true))
-    Integer days = device.currentValue("cookieRefreshDays").toInteger()
+    Integer days = device.currentValue("cookieRefreshDays").toLong()
     String lastCookieRfsh = serverData.lastCookieRrshDt
     if(!lastCookieRfsh) { return "Not Sure"}
     Date lastDt = Date.parse("E MMM dd HH:mm:ss z yyyy", formatDt(Date.parse("E MMM dd HH:mm:ss z yyyy", lastCookieRfsh)))   
                                                                              
-    String dMinus = seconds2Duration(((tNow-lastDt.getTime())/1000).toInteger(),false,3)
+    String dMinus = seconds2Duration(((tNow-lastDt.getTime())/1000).toLong(),false,3)
     updateAttr("tmFromAtRrsh", dMinus)                                                                        
                                                                              
     Date nextDt = Date.parse("E MMM dd HH:mm:ss z yyyy", formatDt(lastDt + days))
@@ -339,14 +346,14 @@ String formatDt(Date dt, Boolean tzChg=true) {
 private Long wnow(){ return (Long)now() }
 
 @SuppressWarnings('GroovyAssignabilityCheck')
-static String seconds2Duration(Integer itimeSec, Boolean postfix=true, Integer tk=2) {
-    Integer timeSec=itimeSec
-    Integer years = Math.floor(timeSec / 31536000); timeSec -= years * 31536000
-    Integer months = Math.floor(timeSec / 31536000); timeSec -= months * 2592000
-    Integer days = Math.floor(timeSec / 86400); timeSec -= days * 86400
-    Integer hours = Math.floor(timeSec / 3600); timeSec -= hours * 3600
-    Integer minutes = Math.floor(timeSec / 60); timeSec -= minutes * 60
-    Integer seconds = Integer.parseInt((timeSec % 60) as String, 10)
+static String seconds2Duration(Long itimeSec, Boolean postfix=true, Integer tk=2) {
+    Long timeSec=itimeSec
+    Long years = Math.floor(timeSec / 31536000); timeSec -= years * 31536000
+    Long months = Math.floor(timeSec / 31536000); timeSec -= months * 2592000
+    Long days = Math.floor(timeSec / 86400); timeSec -= days * 86400
+    Long hours = Math.floor(timeSec / 3600); timeSec -= hours * 3600
+    Long minutes = Math.floor(timeSec / 60); timeSec -= minutes * 60
+    Long seconds = Integer.parseInt((timeSec % 60) as String, 10)
     Map d = [y: years, mn: months, d: days, h: hours, m: minutes, s: seconds]
     List l = []
     if(d.d > 0) { l.push("${d.d} ${pluralize(d.d, "day")}") }
@@ -356,7 +363,7 @@ static String seconds2Duration(Integer itimeSec, Boolean postfix=true, Integer t
     return l.size() ? "${l.take(tk ?: 2)?.join(", ")}${postfix ? " ago" : sBLANK}".toString() : "Not Sure"
 }
 
-static String pluralize(Integer itemVal, String str) { return (itemVal > 1) ? str+"s" : str }
+static String pluralize(itemVal, String str) { return (itemVal > 1) ? str+"s" : str }
 
 def readJsonPage(fName){
     def params = [

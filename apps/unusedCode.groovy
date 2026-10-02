@@ -1,3 +1,224 @@
+ /*
+ * Unused Code
+ * 
+ *
+ *  Licensed Virtual the Apache License, Version 2.0 (the "License"); you may not use this file except
+ *  in compliance with the License. You may obtain a copy of the License at:
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+ *  on an "AS IS" BASIS, WIyTHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ *  for the specific language governing permissions and limitations under the License.
+ *
+ *    Date            Who                    Description
+ *    -------------   -------------------    ---------------------------------------------------------
+ *    
+ */
+static String version()	{  return '0.0.1'  }
+import java.text.SimpleDateFormat
+import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
+import groovy.transform.Field
+//include thebearmay.uiInputElements
+
+
+definition (
+	name: 			"Unused Code Cleanup", 
+	namespace: 		"thebearmay", 
+	author: 		"Jean P. May, Jr.",
+	description: 	"Looks at App and Device Code to identify code that is not in use",
+	category: 		"Utility",
+	importUrl: "https://raw.githubusercontent.com/thebearmay/hubitat/main/apps/unusedCode.groovy",
+    installOnOpen:  true,
+	oauth: 			false,
+    iconUrl:        "",
+    iconX2Url:      "",
+    menu: 			"Apps"
+) 
+
+preferences {
+    page name: "main"
+
+}
+mappings {
+/*    path("/refresh") {
+        action: [POST: "refresh",
+                 GET: "refresh"]
+    }
+*/
+}
+
+def installed() {
+//	log.trace "installed()"
+    state?.isInstalled = true
+    initialize()
+}
+
+def updated(){
+//	log.trace "updated()"
+    if(!state?.isInstalled) { state?.isInstalled = true }
+	if(debugEnabled) runIn(1800,logsOff)
+}
+
+def initialize(){
+}
+
+void logsOff(){
+     app.updateSetting("debugEnabled",[value:"false",type:"bool"])
+}
+
+def main(){
+    dynamicPage (name: "main", title: "<h2 style='background-color:#e6ffff;border-radius:15px'>${app.getLabel()}<span style='font-size:xx-small'>&nbsp;v${version()}</span></h2>", install: true, uninstall: true) {
+        section (name:'cPageHndl', title:''){
+		    
+            ArrayList devList = getDevCode()
+            ArrayList appList = getAppCode()
+            
+            paragraph getInputElemStr(name:"selDev", type:'enum', width:'15em', radius:'12px', color:'#000000', background:'#25ffbe', title:"<b>Unused Device Code</b>", options:devList, multiple:true)
+            paragraph getInputElemStr(name:"selApp", type:'enum', width:'15em', radius:'12px', color:'#000000', background:'#25ffbe', title:"<b>Unused App Code</b>", options:appList, multiple:true)
+			paragraph getInputElemStr(name:"delBtn", type:'button', width:'10em', radius:'12px', color:'#000000', background:'#25ffbe', title:"<b>Deleted Selected Code</b>")
+            //paragraph getInputElemStr(name:"debugEnabled", type:'bool', width:'15em', radius:'12px', color:'#000000', background:'#2596be', title:"<b>Enable Debug</b>")
+            //paragraph getInputElemStr(name:"nameOverride", type:'text', width:'15em', radius:'12px', color:'#000000', background:'#2596be', title:"<b>New Name for Application</b>", defaultValue:app.getLabel())
+            
+            if(state.delBtnPushed){
+                state.delBtnPushed = false
+                selDev.each {
+                    delDev(it)
+                }
+                selApp.each {
+                    delApp(it)
+                }
+                paragraph "<script type='text/javascript'>location.reload()</script>"
+            }
+            
+            if(debugEnabled) runIn(1800, 'logsOff')
+            if(nameOverride != app.getLabel()) app.updateLabel(nameOverride)
+
+        }
+    }
+}
+
+void delApp(id){
+	params = [
+		uri: "http://127.0.0.1:8080/app/edit/deleteJson/$id",
+		headers: [
+			"Accept": "application/json"
+		]
+	]
+    httpGet(params){ resp ->
+        //log.debug resp.data
+    }
+    
+}
+
+void delDev(id){
+    params = [
+		uri: "http://127.0.0.1:8080/driver/editor/deleteJson/$id",
+		headers: [
+			"Accept": "application/json"
+		]
+	]
+    httpGet(params){ resp ->
+        //log.debug resp.data
+    }
+
+}
+
+ArrayList getDevCode() {
+    // /hub2/userDeviceTypes
+    	ArrayList unusedDev = []
+    	try{		
+        params = [
+            uri: "http://127.0.0.1:8080/hub2/userDeviceTypes",
+            headers: [
+                "Accept": "application/json"
+            ]
+		]
+        if(debugEnabled) 
+        	log.debug "$params"
+        httpGet(params){ resp ->
+            if(debugEnabled) 
+            	log.debug "${resp.data}"
+            resp.data.each {
+                //log.debug "${it.usedBy}"
+                if(!it.usedBy || it.usedBy == null){
+                    HashMap wMap = [:]
+                    wMap.put(it.id,"${it.name}")
+                    unusedDev.add(wMap) 
+                }
+            }
+		}
+    }catch (e){
+        log.error "$e"
+    }
+    return unusedDev
+}
+
+ArrayList getAppCode(){
+    // /hub2/userAppTypes
+        	ArrayList unusedApp = []
+    	try{		
+        params = [
+            uri: "http://127.0.0.1:8080/hub2/userAppTypes",
+            headers: [
+                "Accept": "application/json"
+            ]
+		]
+        if(debugEnabled) 
+        	log.debug "$params"
+        httpGet(params){ resp ->
+            if(debugEnabled) 
+            	log.debug "${resp.data}"
+            resp.data.each {
+                //log.debug "${it.usedBy}"
+                if(!it.usedBy || it.usedBy == null){
+                    HashMap wMap = [:]
+                    wMap.put(it.id,"${it.name}")
+                    unusedApp.add(wMap) 
+                }
+            }
+		}
+    }catch (e){
+        log.error "$e"
+    }
+    return unusedApp
+}
+
+def appButtonHandler(btn) {
+    switch(btn) {
+        case 'delBtn':
+        	state.delBtnPushed = true
+        	break
+         default: 
+            break
+    }
+}
+
+
+
+HashMap getDevice(devId){
+
+	try{		
+        params = [
+            uri: "http://127.0.0.1:8080/device/fullJson/$devId",
+            headers: [
+                "Accept": "application/json"
+            ]
+		]
+        if(debugEnabled) 
+        	log.debug "$params"
+        httpGet(params){ resp ->
+            if(debugEnabled) 
+            	log.debug "$resp.data"
+            return resp.data
+		}
+    }catch (e){
+        log.error "$e"
+    }
+    
+}
+
 /*
 *
 * Set of methods for UI elements

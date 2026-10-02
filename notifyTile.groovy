@@ -37,10 +37,12 @@
 *    2022-12-06  thebearmay    additional date/time format
 * 	 2025-04-03	 thebearmay	   add time/date formats, lowered mininum message count to 1
 *    2025-04-20  amithalp	   add color options
+*	 2026-04-21	 thebearmay	   v2.0.14 add a reverse fill option
+*	 2026-04-22	 thebearmay	   v2.0.15 initialize state.lastLimit when configuring
 */
 import java.text.SimpleDateFormat
 import groovy.transform.Field
-static String version()	{  return '2.0.13'  }
+static String version()	{  return '2.0.15'  }
 
 @Field sdfList = ["ddMMMyyyy HH:mm","ddMMMyyyy HH:mm:ss","ddMMMyyyy hh:mma", "dd/MM/yyyy HH:mm:ss", "MM/dd/yyyy HH:mm:ss", "dd/MM/yyyy hh:mma", "MM/dd/yyyy hh:mma", "MM/dd HH:mm", "MM/dd h:mma", "HH:mm", "H:mm","h:mma", "HH:mm ddMMMyyyy","HH:mm:ss ddMMMyyyy","hh:mma ddMMMyyyy", "HH:mm:ss dd/MM/yyyy", "HH:mm:ss MM/dd/yyyy", "hh:mma dd/MM/yyyy ", "hh:mma MM/dd/yyyy", "HH:mm yyyy-MM-dd", "None"]
 
@@ -69,6 +71,7 @@ metadata {
 		input("leadingDate", "bool", title:"Use leading date instead of trailing")
 		input("msgLimit", "number", title:"Number of messages from 1 to 20",defaultValue:5, range:1..20)
 		input("create5H", "bool", title: "Create horizontal message tile?")
+        input("revFill", "bool", title: "Reverse the fill order")
 		
         input("colorE", "text", title: "Color for [E] Emergency", defaultValue: "red")
         input("colorH", "text", title: "Color for [H] High", defaultValue: "orange")
@@ -121,8 +124,8 @@ metadata {
 
         if(msgLimit == null) device.updateSetting("msgLimit",[value:5,type:"number"])
 	// V2.0.3 When new msgLimit less than prior(state) msgLimit adjust message and state values	
-		if (state?.lastLimit.toInteger()>settings.msgLimit.toInteger())
-			{
+        if(!state.lastLimit) state.lastLimit = 0
+		if (state?.lastLimit.toInteger()>settings.msgLimit.toInteger()){
 			wkTile=device.currentValue("last5")
 			msgFilled=state.msgCount.toInteger()
 			if (debugEnable) log.debug "Shinking tile count lastLimit ${state.lastLimit} newLimit ${settings.msgLimit} msgCount ${msgFilled}"
@@ -136,7 +139,7 @@ metadata {
 				}
 			state.msgCount=msgFilled
 			sendEvent(name:"last5", value:wkTile)
-			}
+		}
 		
 		if (!settings.create5H)
 			sendEvent(name:"last5H", value:'<span class="last5"></span>')
@@ -149,6 +152,7 @@ metadata {
 		sendEvent(name:"last5", value:'<span class="last5"></span>')
 		sendEvent(name:"last5H", value:'<span class="last5"></span>')
 		state.msgCount=0
+        state.lastLimit = 0
         if(location.hub.firmwareVersionString >= "2.2.8.0") {
             if(notify1){
                 device.deleteCurrentState("notify1")
@@ -195,10 +199,18 @@ void deviceNotification(notification){
 	//	insert new message at beginning	of last5 string
 		msgFilled = state.msgCount.toInteger()
 		String existing = device.currentValue("last5")?.replace('<span class="last5">', '')?.replace('</span>', '')?.trim()
-		if (msgFilled > 0 && existing) {
-            wkTile = '<span class="last5">' + notification + '<br />' + existing + '</span>'
+	    if(!revFill) {
+    		if (msgFilled > 0 && existing) {
+            	wkTile = '<span class="last5">' + notification + '<br />' + existing + '</span>'
+        	} else {
+            	wkTile = '<span class="last5">' + notification + '</span>'
+        	}
         } else {
-            wkTile = '<span class="last5">' + notification + '</span>'
+			if (msgFilled > 0 && existing) {
+            	wkTile = "<span class='last5'>$existing<br />$notification</span>"
+        	} else {
+            	wkTile = '<span class="last5">' + notification + '</span>'
+        	}
         }
 
 
@@ -206,32 +218,42 @@ void deviceNotification(notification){
 		if (debugEnable) log.debug "deviceNotification2 msgFilled: ${msgFilled} msgLimit: ${settings.msgLimit}" 
 		if (msgFilled < settings.msgLimit.toInteger())
 			msgFilled++
-		else
-			{
+        else if(!revFill) {
 			int i = wkTile.lastIndexOf('<br />');
 			if (i != -1) 
 				wkTile = wkTile.substring(0, i) + '</span>';
-			}
+        } else {
+            int i = wkTile.indexOf('<br />')+6;
+			if (i != -1) 
+				wkTile = wkTile.substring(i,) + '</span>';
+        }
 
 	//	Ensure tile length is less than 1024 and hopefully stop loops
 		int wkLen=wkTile.length()	
-		while (wkLen > 1024 && msgFilled > 0)
-			{
-			if (debugEnable) log.debug "wkTile length ${wkLen}> 1024 truncating msgCount: ${msgFilled}"
-			int i = wkTile.lastIndexOf('<br />');
-			if (i != -1) 
-				{
-				wkTile = wkTile.substring(0, i) + '</span>';
-				msgFilled--
+    	if(!revFill) {
+    		while (wkLen > 1024 && msgFilled > 0) {
+				if (debugEnable) log.debug "wkTile length ${wkLen}> 1024 truncating msgCount: ${msgFilled}"
+				int i = wkTile.lastIndexOf('<br />');
+				if (i != -1) {
+					wkTile = wkTile.substring(0, i) + '</span>';
+					msgFilled--
+				}else{
+					wkTile='<span class="last5"></span>'
+					msgFilled=0
 				}
-			else
-				{
-				wkTile='<span class="last5"></span>'
-				msgFilled=0
-				}
-			wkLen=wkTile.length()
-			if (debugEnable) log.debug "Truncated wkTile length ${wkLen}, msgCount: ${msgFilled}"
+				wkLen=wkTile.length()
+				if (debugEnable) log.debug "Truncated wkTile length ${wkLen}, msgCount: ${msgFilled}"
 			}
+        } else {
+            wkLen=wkTile.length()
+            while (wkLen > 1024 && msgFilled > 0) {
+                int i = wkTile.indexOf('<br />')+6;
+				if (i != -1) {
+                    wkTile = wkTile.substring(i,)
+                    wkLen = wkTile.length()
+                }
+            }
+        }
 
 	//	Update attributes and state
 		sendEvent(name:"last5", value: wkTile)

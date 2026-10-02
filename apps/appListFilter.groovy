@@ -1,4 +1,162 @@
 /*
+ * HE Regions Shell - UI
+ * 
+ *      A lightweight UI shell for the HE environment featuring draggable, resizeable regions running the 
+ *        hub's apps/devices/utilities. 
+ *
+ *  Licensed Virtual the Apache License, Version 2.0 (the "License"); you may not use this file except
+ *  in compliance with the License. You may obtain a copy of the License at:
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software distributed under License is distributed
+ *  on an "AS IS" BASIS, WIyTHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ *  for the specific language governing permissions and limitations under the License.
+ *
+ *    Date            Who                    Description
+ *    -------------   -------------------    ---------------------------------------------------------
+ *    2026-04-23		thebearmay				code cleanup, add app filter 
+ *	  2026-04-24								About box enhancements using definitionData property
+ */ 
+
+import groovy.transform.Field
+
+//#include thebearmay.uiRegions
+String version() {return this.definitionData.version}
+String appDesc() {return this.definitionData.description}
+
+definition (
+	name: 			"Apps List FIlter", 
+	namespace: 		"thebearmay", 
+	author: 		"Jean P. May, Jr.",
+	description: 	"List of Apps allowing user override of category",
+	category: 		"Utility",
+	importUrl: "https://raw.githubusercontent.com/thebearmay/hubitat/main/apps/appListFilter.groovy",
+    installOnOpen:  true,
+	oauth: 			false,
+    iconUrl:        "",
+    iconX2Url:      "",
+    menu: 			"Apps",
+    version: 		'0.0.1'
+) 
+
+preferences {
+    page name: "_mainPage"
+
+}
+
+
+def installed() {
+    state?.isInstalled = true
+    initialize()
+}
+
+def updated(){
+    if(!state?.isInstalled) { state?.isInstalled = true }
+	if(debugEnabled) runIn(1800,logsOff)
+}
+
+def initialize(){
+}
+
+void logsOff(){
+     app.updateSetting("debugEnabled",[value:"false",type:"bool"])
+}
+
+def _mainPage(){
+    //<h2 style='background-color:#e6ffff;border-radius:15px'>${app.getLabel()}<span style='font-size:xx-small'>&nbsp;v${version()}</span></h2>
+    dynamicPage (name: "_mainPage", title: "", install: true, uninstall: true) {
+        section (name:'cPageHndl', title:''){
+            r2Content =_appsList()
+            paragraph r2Content
+            
+            if(state.newAppLaunch){
+                paragraph "<script>document.location.replace('/installedapp/configure/${state.newAppLaunch}');</script>"
+                state.remove('newAppLaunch')
+            }
+            if(state.infoReq){
+                paragraph "<script>document.location.replace('/installedapp/status/${state.infoReq}');</script>"
+                state.remove('infoReq')
+            }
+              
+        }
+    }
+}
+
+
+String _appsList(){
+    String dList = "<style>table{border-collapse: collapse;}td{border:1px gray dotted;padding:2px;max-height:1.5em;height:1.5em;line-height:1.5}tr{padding:0px;max-height:1.5em;height:1.5em;line-height:1}</style><table>"
+    dList += "<tr><th>"+getInputElemStr(name:"appFilter", type:'enum', radius:'12px', style:'background-image:linear-gradient(to right, #a0d8ef, #b2f2e4, #ffffff);', color:'#000000', title:'Filter', width:'15em',options:['All','Apps','Automations','Integrations'],defaultValue:"${settings['appFilter']}" )+"</th><th>Type Override</th></tr>"
+    appList.each {
+		dList+= "<tr><td>"+getInputElemStr(name:"app-${it.key}", type:'button', style:'background-image:linear-gradient(to right, #a0d8ef, #b2f2e4, #ffffff);', color:'#000000', title:"${it.value}", noBorder:true )+"</td>"
+   		dList+= "<td>"+getInputElemStr(name:"appType-${it.key}", type:'enum', noLabel:true, radius:'12px', style:'margin:1px;background-image:linear-gradient(to right, #a0d8ef, #b2f2e4, #ffffff);', color:'#000000', title:'', width:'15em',options:['Apps','Automations','Integrations'],defaultValue:"${settings["appType-$it.key"]}" )+"</td>"
+        dList+= "<td>"+getInputElemStr(name:"appInfo-${it.key}", type:'button', noBorder:true, title:"<i class='fa-regular fa-circle-info'></i>")+"</td></tr>"
+    }
+    dList+="</table>"
+    state.holdFilter = settings['appFilter']
+    return dList
+}
+
+
+ArrayList getAppList(){
+        ArrayList appList = []
+    	try{		
+        params = [
+            uri: "http://127.0.0.1:8080/hub2/appsList",
+            headers: [
+                "Accept": "application/json"
+            ]
+		]
+        if(debugEnabled) 
+        	log.debug "$params"
+        httpGet(params){ resp ->
+            if(debugEnabled) 
+            	log.debug "${resp.data.apps}"
+            resp.data.apps.each { apps ->
+            	fType = ''
+                if(settings["appType-${apps.data.id}"]) {
+                    fType = settings["appType-${apps.data.id}"]
+                } else if(!apps.data.user) { 
+                	resp.data.systemAppTypes.each{
+                        if(it.id == apps.data.appTypeId)
+                        	fType = it.menu
+                	}
+                } else {                	 
+                    resp.data.userAppTypes.each{
+                    	if(it.id == apps.data.appTypeId)
+                        	fType = it.menu
+                    }
+                }
+               
+                if(appFilter == 'All' || appFilter == fType ){
+                	HashMap wMap = [key:"${apps.id}",value:"${apps.data.name}"]
+                    appList.add(wMap)
+                }
+            }
+		}
+    }catch (e){
+        log.error "$e"
+    }
+    //log.debug appList
+    return appList
+    
+}
+
+def appButtonHandler(btn) {
+    switch(btn) {
+        case { it.startsWith('app-') }:
+            state.newAppLaunch = btn.substring(4,)
+        	break
+        case { it.startsWith('appInfo-') }:
+            state.infoReq = btn.substring(8,)
+        	break
+        default: 
+            break
+    }
+}
+
+
+/*
 *
 * Set of methods for UI elements
 *
@@ -334,7 +492,8 @@ String inputEnum(HashMap opt){
     
     String retVal = "<div class='form-group'><input type='hidden' name='${opt.name}.type' value='${opt.type}'><input type='hidden' name='${opt.name}.multiple' value='${opt.multiple}'></div>"
     retVal += "<div class='mdl-cell mdl-cell--4-col mdl-textfield mdl-js-textfield' style='margin: 8px 0; padding-right: 8px;' data-upgraded=',MaterialTextfield'>"
-    retVal += "<label for='settings[${opt.name}]' style='min-width:${opt.width}' class='control-label'>${opt.title}</label><div class='SumoSelect sumo_settings[${opt.name}]' tabindex='0' role='button' aria-expanded='false'>"
+    if(!opt.noLabel)
+    	retVal += "<label for='settings[${opt.name}]' style='min-width:${opt.width}' class='control-label'>${opt.title}</label><div class='SumoSelect sumo_settings[${opt.name}]' tabindex='0' role='button' aria-expanded='false'>"
     retVal += "<div style='${computedStyle}'><select id='settings[${opt.name}]' ${mult} name='settings[${opt.name}]' class='selectpicker form-control mdl-switch__input submitOnChange SumoUnder' placeholder='Click to set' data-default='' tabindex='-1' style='${computedStyle}'>"
     ArrayList selOpt = []
 	if(settings["${opt.name}"]){
@@ -521,6 +680,8 @@ String buttonLink(HashMap opt) { //modified slightly from jtp10181's code
     	return "Error missing name or title"
     
     String computedStyle = 'cursor:pointer;text-align:center;box-shadow: 2px 2px 4px #71797E;'
+    if(opt.style) computedStyle += "$opt.style"
+    if(opt.noBorder == true) computedStyle += "outline: none;box-shadow: none;text-align:left;"
     if (opt.float) computedStyle +="float:${opt.float};"
     if(opt.width) computedStyle += "width:${opt.width};min-width:${opt.width};"
     if(opt.background) computedStyle += "background-color:${opt.background};"
@@ -658,6 +819,6 @@ String listTable() {
     ...
 }
 */
-@Field static String fullScrn = "<script>document.getElementById('divSideMenu').setAttribute('style','display:none !important');document.getElementById('divMainUIHeader').setAttribute('style','height: 0 !important;');document.getElementById('divMainUIContent').setAttribute('style','padding: 0 !important;');document.getElementById('divMainUIFooter').setAttribute('style','display:none !important');contentHeight = Math.round(window.innerHeight * 1.2);document.getElementById('divMainUIContentContainer').setAttribute('style', 'background: white; height: ' + contentHeight + 'px !important;');document.getElementById('divLayoutControllerL2').setAttribute('style', 'height: ' + contentHeight + 'px !important;');</script><style>overflow-y: scroll !important;</style>"	
+//@Field static String fullScrn = "<script>document.getElementById('divSideMenu').setAttribute('style','display:none !important');document.getElementById('divMainUIHeader').setAttribute('style','height: 0 !important;');document.getElementById('divMainUIContent').setAttribute('style','padding: 0 !important;');document.getElementById('divMainUIFooter').setAttribute('style','display:none !important');contentHeight = Math.round(window.innerHeight * 1.2);document.getElementById('divMainUIContentContainer').setAttribute('style', 'background: white; height: ' + contentHeight + 'px !important;');document.getElementById('divLayoutControllerL2').setAttribute('style', 'height: ' + contentHeight + 'px !important;');</script><style>overflow-y: scroll !important;</style>"	
 @Field static String ttStyleStr = "<style>.tTip {display:inline-block;}.tTip .tTipText {display:none;border-radius: 6px;padding: 5px 0;position: absolute;z-index: 1;}.tTip:hover .tTipText {display:inline-block;background-color:yellow;color:black;text-align:left;}</style>"
 @Field static String tableStyle = "<style>.mdl-data-table tbody tr:hover{background-color:inherit} .tstat-col td,.tstat-col th { padding:8px 8px;text-align:center;font-size:12px} .tstat-col td {font-size:15px; padding:8px 8px 8px 8px;white-space: nowrap;} tr {border-right:2px solid black;}</style>"

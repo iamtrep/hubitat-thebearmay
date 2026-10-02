@@ -10,6 +10,7 @@
 * Apps	 * /app/appTypeList
 * Apps   * /hub2/appsList
 * Apps   * /hub2/userAppTypes
+* Apps	 * /app/edit/deleteJson/<id> // delete apps code
 * Apps   * /hub/advanced/reloadAppAndDriverDefinitions //Resets 'Error 404' conditions
 * Apps   * /installedapp/statusJson/<appID> //>=HE 2.4.0.xx returns the application status page data
 * Apps	 *	// 2.4.3.121
@@ -20,6 +21,8 @@
 * Apps	 *	
 * Backup    * Backup Download
 * Backup    * /hub/backupDB?fileName=latest
+* Backup    * 
+* Backup    * /hub2/createFullLocalBackup  //2.5.2.xx
 * Backup    * 
 * Backup    * Backup Restore
 * Backup    * /hub/uploadBackup
@@ -33,6 +36,9 @@
 * Backup    * /hub2/cloudBackups?force=false
 * Backup    * // List of local backups
 * Backup    * /hub2/localBackups
+* Bluetooth  * 
+* Bluetooth  * /hub/debug/captureBluetoothLogs
+* Bluetooth  * 
 * Bundles    *
 * Bundles    * /hub2/userBundles
 * Bundles    *
@@ -58,6 +64,9 @@
 * Device    * /device/fullJson/<devID>  //2.4.0.x
 * Devive    * /device/listJson?capability=capability.* //any valid capability
 * Device    * /device/listJson?capability=device.<driverName> //i.e. HubInformationDriverv3
+* Device    * /device/getTags/<devId>
+* Device    * /device/setTags/<devid>?tags=tag1,tag2, ...
+* Device    * /driver/editor/deleteJson/<id> //delete driver code
 * Device    *
 * Device    * // Using POST
 * Device    * /device/update
@@ -163,6 +172,7 @@
 * Matter	 * /hub/matterDetails/json		
 * Matter	 * Get Button to Reset all Matter settings
 * Matter	 * /hub/matterDetails?fullui=true		
+* Matter	 * /hub/threadDetails/json
 * Matter   *
 * Mem	 * Free Memory			
 * Mem	 * /hub/advanced/freeOSMemory			
@@ -184,7 +194,13 @@
 * Mesh	 *		
 * Mesh	 * Token
 * Mesh   * /device/showHubMeshToken
-* Mesh	 *			
+* Mesh	 *	
+* mNDS  *
+* mNDS  * /hub/mdnsDevices //mNDS discovery
+* mNDS  *
+* Net	 * 
+* Net	 * /hub/advanced/disconnectEthernet
+* Net	 * 
 * Net	 * Network Tests			
 * Net	 *    /hub/networkTest 			
 * Net	 *    /hub/networkTest/ping/gateway 			
@@ -200,6 +216,8 @@
 * Other  *  /hub/list/data   //returns the same data as the /hub/data
 * Other	 *  /api/hubitat.xml
 * Other  *  /ui2/images/hub.png
+* Other  *  /hub/advanced/blinkLED/
+* Other  *  /hub/advanced/dumpThreadsToLog - log top 10 threads in the engineering log for troubleshooting 2.5.0.147
 * Other	 * 			
 * Radios	 * Radios On/Off			
 * Radios	 *			
@@ -219,13 +237,18 @@
 * Radios	 *	body:[zwaveStatus:"<enabled/disabled>"], 		
 * Radios	 *	followRedirects: false		
 * Radios	 */			
-* Reboot	 * Hub Reboot			
+* Reboot	 * Hub Reboot	[httpPOST]		
 * Reboot	 * /hub/reboot			
 * Reboot	 * /hub/rebuildDatabaseAndReboot //>=2.3.7.14			
-* Reboot	 *  //Purge Logs			
-* Reboot	 * /hub/reboot			
+* Reboot	 *
+* Reboot	 *  //Purge Logs	/ Rebuid		
+* Reboot	 * /hub/reboot	//2.3.7.140 - 2.5.0.0		
 * Reboot	 *	headers:[		Content-Type: "application/x-www-form-urlencoded" ],		
-* Reboot	 *  body:[purgeLogs:"true"]			
+* Reboot	 *  body:[rebuildDataBase:"false",purgeLogs:"true"]		
+* Reboot	 *
+* Reboot	 * /hub/reboot	//>= 2.5.0.0		
+* Reboot	 *	headers:[		Content-Type: "application/json" ],		
+* Reboot	 *  body:{"rebuildDataBase":false,"purgeLogs":true}
 * Reboot	 *			
 * Reboot	 * Hub Shutdown			
 * Reboot	 * /hub/shutdown			
@@ -236,7 +259,6 @@
 * Retry    * //2.4.1.103
 * Retry    * /hub/commandRetryController/enable/true
 * Retry    * /hub/commandRetryController/enable/false
-* Retry    *
 * Retry    *
 * Rooms    *
 * Rooms    * /hub2/roomsList
@@ -281,7 +303,10 @@
 * UI	 * Hub UI 			
 * UI	 * /hub2/hubData
 * UI   * /hub/messages
-* UI	 *			
+* UI	 *
+* Video  *
+* Video  * /hub2/videoStream/<device ID>.mjpg
+* Video  *
 * WiFi	 * WiFi			
 * WiFi	 * /hub/advanced/installDriver/all			
 * WiFi	 * /hub/advanced/deleteWiFiNetworkInfo			
@@ -289,6 +314,7 @@
 * WiFi	 * 			
 * Zigbee	 * Zigbee			
 * Zigbee	 *    /hub/zigbee/getChildAndRouteInfo
+* Zigbee	 *    /hub/zigbee/getChildAndRouteInfoJson
 * Zigbee   *    /hub/resetzigbee
 * Zigbee   *    /hub/searchZigbeeDevices
 * Zigbee   *    /hub/zigbeeChannelScan
@@ -325,9 +351,13 @@
 * ZWave  * /hub/zwave2/disableDebugLogging
 * ZWave  * /hub/zwave2/getControllerState
 * ZWave  * 
-* ZWave  * to resolve a firmware bug 
+* ZWave  * // to resolve a firmware bug 
 * ZWave  * /hub/zwave2/watchdog/disable
 * ZWave  * /hub/zwave2/watchdog/enable
+* ZWave  * 
+* ZWave  * // extra engineering logging 
+* ZWave  * /hub/zwave2/ccdebug/true
+* ZWave  * /hub/zwave2/ccdebug/false
 * ZWave  * 
 * ZWave  * 2.4.3.145 - complete reset of the JS install
 * ZWave  * /hub/zwave2/cleanInstallZWaveJS

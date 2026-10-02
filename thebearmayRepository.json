@@ -158,13 +158,6 @@
       "description": "Manages the merging of data from multiple device drivers, and an assigned template to create an HTML output attribute that can be used on the Dashboard."
     },
     {
-      "id": "f16a5566-4388-4431-bef1-cefb079cb7c1",
-      "name": "Nexia Thermostat Manager",
-      "category": "Utility",
-      "location": "https://raw.githubusercontent.com/thebearmay/hubitat/main/manifests/nexiaThermManifest.json",
-      "description": "Port of the ST Nexia Thermostat Manager.  Known work with the XL850 and XL824 Thermostat; may work with any thermostat running off of the TraneHome.com cloud."
-    },
-    {
       "id": "b81ff898-9642-45e0-a750-36ce50a43ce6",
       "name": "Danfoss Ally Master",
       "category": "Utility",
@@ -388,6 +381,26 @@
       "category":"Utility",
       "location":"https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/manifests/shadeMinderManifest.json",
       "description":"Automates shade opening and closing based on luminance/lux, or schedule.  Also monitors windSpeed/windGust attributes to close/open (depending on type) when exceeded.",
+      "tags":[
+        "Tools & Utilities"
+       ]
+    },
+    {
+      "id":"327fec62-c2a2-48ee-a235-9c3a4935a2a8",
+      "name":"Unused Code Cleanup",
+      "category":"Utility",
+      "location":"https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/manifests/unusedCodeManifest.json",
+      "description":"Creates lists of App and Dev code that are not in use by instatiated instances, and allows them to be deleted in mass or individually.",
+      "tags":[
+        "Tools & Utilities"
+       ]
+    },
+    {
+      "id":"69830b8a-efb7-43a7-8424-a98cc541564d",
+      "name":"HE Regions Shell - UI ",
+      "category":"Control",
+      "location":"https://raw.githubusercontent.com/thebearmay/hubitat/refs/heads/main/manifests/heRegionsShellManifest.json",
+      "description":"A lightweight UI shell for the HE environment featuring multiple draggable, resizeable regions running the  hub's apps/devices/utilities",
       "tags":[
         "Tools & Utilities"
        ]

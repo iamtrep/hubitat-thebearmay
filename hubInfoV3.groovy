@@ -88,7 +88,13 @@
  *	  2025-12-07				 v3.1.22 - add javaDirect
  *	  2025-12-23				 v3.1.23 - move driver version update code
  *	  2026-01-13				 v3.1.24 - h2Data issue
- *	  2023-01-20				 v3.1.25 - make freeMem15 unit agree with freeMemory
+ *	  2026-01-20				 v3.1.25 - make freeMem15 unit agree with freeMemory
+ *	  2026-03-10				 v3.1.26 - warning message change
+ *	  2026-06-01				 v3.1.27 - reboot purge and rebuild changes
+ *	  2026-07-20				 v3.1.28 - add zwLRChannel and zwJsVersion for 2.5.1.x
+ *	  2026-07-24				 v3.1.29 - cloud.hubitat to cloud.aws.hubitat
+ *	  2026-07-31				 v3.1.30 - zigbeeStatus consistancy
+ *	  2026-08-27				 v3.1.31 - C8 Pro Thread 
 */
 import java.text.SimpleDateFormat
 import groovy.json.JsonOutput
@@ -102,7 +108,7 @@ import java.time.format.DateTimeFormatter
 import java.util.TimeZone
 
 @SuppressWarnings('unused')
-static String version() {return "3.1.24"}
+static String version() {return "3.1.31"}
 
 metadata {
     definition (
@@ -198,6 +204,7 @@ metadata {
         attribute "accessList","string"
         attribute "sunriseTomorrow","string"
         attribute "sunsetTomorrow","string"
+        attribute "threadRadio","string"
 		//HE v2.7.3.1
 		attribute "zwaveJS", "string"
         attribute "zwaveRegion","string"
@@ -214,6 +221,10 @@ metadata {
         //HE v2.4.3.121
         attribute "appStateCompression", "string"
 		attribute "javaDirect","number"
+        //HE v2.5.1.100
+        attribute 'zwLRChannel', 'string'
+        attribute 'zwJsVersion', 'string'
+        
         command "hiaUpdate", ["string"]
         command "reboot"
         command "rebootW_Rebuild"
@@ -345,7 +356,7 @@ void updated(){
     if(htmlOutput == null) 
         device.updateSetting("htmlOutput",[value:"hubInfoOutput.html",type:"string"])
     device.updateSetting("htmlOutput",[value:toCamelCase(htmlOutput),type:"string"])
-    if(makerInfo == null || !makerInfo.contains("https://cloud.hubitat.com/"))
+    if(makerInfo == null || !(makerInfo.contains("https://cloud.hubitat.com/")||makerInfo.contains("https://cloud.aws.hubitat.com/")))
         cloudFontStyle = 'font-weight:bold;color:red'
     elseversion
         cloudFontStyle = ''
@@ -936,7 +947,7 @@ void parseZwave(String zString){
     if(device.currentValue('zwaveJS',true) != 'true' && zString.length() != 4){
     	if(start == -1 || end < 1 || zString.indexOf("starting up") > 0 ){ //empty or invalid string - possibly non-C7
         	//updateAttr("zwaveData",null)
-        	if(!warnSuppress) log.warn "Invalid ZWave Data returned ($zString) "
+        	if(!warnSuppress) log.warn "ZWave data returned ($zString) is not version string."
     	}else {
         	wrkStr = zString.substring(start,end)
         	wrkStr = wrkStr.replace("(","[")
@@ -1141,12 +1152,16 @@ void hub2DataReq() {
             } else {
                 updateAttr("pCloud", "not connected")
             }
+            if(h2Data.threadReady)
+            	updateAttr("threadRadio", true)
+            else
+                updateAttr("threadRadio", false)
 	    } catch (Exception ex){
     	    if (!warnSuppress) log.warn ex
     	}  
     }
 
-    checkSecurity()
+    //checkSecurity()
     zHealthReq()
 
 }
@@ -1344,7 +1359,7 @@ void getZwHealth(resp, data) {
 }
 
 void checkCloud(){
-    if(makerInfo == null || !makerInfo.contains("https://cloud.hubitat.com/")) {
+    if(makerInfo == null || !(makerInfo.contains("https://cloud.hubitat.com/")||makerInfo.contains("https://cloud.aws.hubitat.com/"))) {
         updateAttr("cloud", "invalid endpoint")
         cloudFontStyle = 'font-weight:bold;color:red'
         return
@@ -1402,6 +1417,8 @@ void getExtendedZigbee(resp, data){
     try{
         def jSlurp = new JsonSlurper()
         Map zbData = (Map)jSlurp.parseText((String)resp.data)
+        if("${zbData.networkState}".toLowerCase() == 'online')
+        	zbData.networkState = 'enabled'
         updateAttr("zigbeeStatus","${zbData.networkState}".toLowerCase())
         updateAttr("zigbeePower",zbData.powerLevel)
 		updateAttr("zigbeeUpdateAvail", zbData.firmwareUpdateAvailable)
@@ -1434,7 +1451,12 @@ void getExtendedZwave(resp, data){
         Map zwData = (Map)jSlurp.parseText((String)resp.data)
         updateAttr("zwaveUpdateAvail","${zwData.isRadioUpdateNeeded}")
         updateAttr("zwaveRegion","${zwData.region}")
-//        updateAttr("zwaveStatus",zwData.enabled) //already caught in hub2 data
+        if(minVerCheck("2.5.1.100")) {
+            updateAttr('zwLRChannel',"${zwData.longRangeChannel}")
+            updateAttr('zwJsVersion',"${zwData.zwaveJSVersion}")
+            if(zwData.firmwareVersion) //only present if on JS, will fall back to the /hub/zwaveVersion call
+            	updateAttr('zwaveVersion',"${zwData.firmwareVersion}")
+        }
     } catch (EX) {
         //log.error "$EX"
     }
@@ -1833,16 +1855,13 @@ void rebootW_Rebuild() {
     }
     log.info "Hub Reboot with Rebuild requested"
     
-    if(!minVerCheck("2.3.7.14")){
-    	httpPost(
-	    	[
+    if(!minVerCheck("2.3.7.140")){
+		params = [
 		    	uri: "http://127.0.0.1:8080",
 			    path: "/hub/rebuildDatabaseAndReboot"
     		]
-	    ) {		resp ->	} 
-    } else {
-        httpPost(
-		[
+    } else if(!minVerCheck("2.5.0.0")) {
+		params = [
 			uri: "http://127.0.0.1:8080",
 			path: "/hub/reboot",
 			headers:[
@@ -1850,8 +1869,17 @@ void rebootW_Rebuild() {
 			],
             body:[rebuildDatabase:"true"] 
 	    ]
-    	) {		resp ->	} 
+    }else {
+		params = [
+			uri: "http://127.0.0.1:8080",
+			path: "/hub/reboot",
+			headers:[
+                "Content-Type": "application/json"
+			],
+            body:'{"rebuildDatabase":true,"purgeLogs":false}' 
+	    ]       
     }
+    httpPost(params) {resp ->  }
 }
 
 void rebootPurgeLogs() {
@@ -1865,16 +1893,27 @@ void rebootPurgeLogs() {
     }
     log.info "Hub Reboot & Log Purge requested"
     
-	httpPost(
-		[
+	if(!minVerCheck("2.5.0.0")) {
+		params = [
 			uri: "http://127.0.0.1:8080",
 			path: "/hub/reboot",
 			headers:[
                 "Content-Type": "application/x-www-form-urlencoded"
 			],
             body:[purgeLogs:"true"] 
-		]
-	) {		resp ->	} 
+	    ]
+    }else {
+		params = [
+			uri: "http://127.0.0.1:8080",
+			path: "/hub/reboot",
+			headers:[
+                "Content-Type": "application/json"
+			],
+            body:'{"rebuildDatabase":false,"purgeLogs":true}'
+	    ]
+    }
+    //log.debug params
+    httpPost(params) {resp ->     }
 }
 
 @SuppressWarnings('unused')

@@ -67,7 +67,6 @@ def mainPage(){
 	    	section("Main") {
 				input "debugEnabled", "bool", title:"Enable Debug Logging:", submitOnChange:true, required:false, defaultValue:false
                 if(debugEnabled) {
-                    unschedule()
                     runIn(1800,logsOff)
                 }
      	    }
@@ -83,10 +82,7 @@ def mainPage(){
                     apiGet("devices")
                 }
                 if(state.temp_token != null) {
-                    if(state.temp_token.size() > 50)
-                        eos = 50
-                    else 
-                        eos = state.temp_token.size()
+                    def eos = state.temp_token.size() > 50 ? 50 : state.temp_token.size()
                     paragraph "<b>Token:</b> ${state.temp_token.toString().substring(0,eos)}. . . . ."
                     paragraph "<b>Expires:</b> ${state?.tokenExpiresDisp}"
                 }
@@ -111,8 +107,8 @@ def mainPage(){
                     else
                         state.numberDevices+=2
                 }*/
-                if (state?.numberDevices > 0){
-                    chdList = []
+                if(getChildDevices().size() > 0){
+                    def chdList = []
                     getChildDevices().each{
                         chdList.add("$it")
                     }
@@ -125,7 +121,7 @@ def mainPage(){
                         }
                         app.updateSetting("removeChild",[value:null,type:"enum"])
                     }
-                    
+
                 }
             }
 
@@ -146,7 +142,7 @@ def mainPage(){
 //Begin App Authorization 
 
 void getAuth(command){
-    bodyMap = [grant_type:"client_credentials",client_id:"$userName", client_secret:"$pwd","scope": ["read:device:current_values"]]
+    def bodyMap = [grant_type:"client_credentials",client_id:"$userName", client_secret:"$pwd","scope": ["read:device:current_values"]]
 
     def bodyText = JsonOutput.toJson(bodyMap)
 	Map requestParams =
@@ -157,21 +153,27 @@ void getAuth(command){
         body: "$bodyText"
 	]
 
-    if(debugEnabled) 
+    if(debugEnabled)
         log.debug "$requestParams"
-    httpPost (requestParams) { resp ->
-        if(debugEnabled) 
-        	log.debug "${resp.properties} - ${command} - ${resp.getStatus()} "
-        if(resp.getStatus() == 200 || resp.getStatus() == 207){
-            if(resp.data){
-                    Map jsonData = (HashMap) resp.data             
-                    state.temp_token = jsonData.access_token
-                    if(debugEnabled) log.debug "Token: ${jsonData.access_token}"
-                    state.tokenExpires = (jsonData.expires_in.toLong()*1000) + new Date().getTime().toLong()
-                    SimpleDateFormat sdf= new SimpleDateFormat("HH:mm:ss yyyy-MM-dd")
-                    state.tokenExpiresDisp = sdf.format(new Date(state.tokenExpires))
-            } 
+    try {
+        httpPost (requestParams) { resp ->
+            if(debugEnabled)
+                log.debug "${resp.properties} - ${command} - ${resp.getStatus()} "
+            if(resp.getStatus() == 200 || resp.getStatus() == 207){
+                if(resp.data){
+                        Map jsonData = (HashMap) resp.data
+                        state.temp_token = jsonData.access_token
+                        if(debugEnabled) log.debug "Token: ${jsonData.access_token}"
+                        state.tokenExpires = (jsonData.expires_in.toLong()*1000) + new Date().getTime().toLong()
+                        SimpleDateFormat sdf= new SimpleDateFormat("HH:mm:ss yyyy-MM-dd")
+                        state.tokenExpiresDisp = sdf.format(new Date(state.tokenExpires))
+                }
+            } else {
+                log.error "getAuth - ${command} failed, status ${resp.getStatus()}, check API credentials"
+            }
         }
+    } catch(Exception e) {
+        log.error "getAuth - ${command} failed: ${e.message}"
     }
 }
 // End App Authorization
@@ -208,8 +210,8 @@ def getApi(resp, data){
         if(resp.getStatus() == 200 || resp.getStatus() == 207){
             if(resp.data){
                 if(data.cmd == "devices"){
-                    jsonData = (HashMap) resp.json
-                    numDev = 0
+                    def jsonData = (HashMap) resp.json
+                    def numDev = 0
                     jsonData.devices.each{
                         if(debugEnabled) log.debug "${it.id}, ${it.deviceType}, ${it.segment.name}"
                         createChildDev(it.id, it.deviceType, it.segment.name, it.location.name)
@@ -217,18 +219,24 @@ def getApi(resp, data){
                     }
                     state.numberDevices = numDev
                 } else if(data.cmd.contains("latest-samples")) {
-                    start = data.cmd.indexOf('/')+1
-                    end = data.cmd.indexOf('/',start)
-                    devId = data.cmd.substring(start,end)
-                    cd = getChildDevice("${app.id}-$devId")
-                    jsonData = (HashMap) resp.json
-                    cd.dataRefresh(jsonData)                    
+                    def start = data.cmd.indexOf('/')+1
+                    def end = data.cmd.indexOf('/',start)
+                    def devId = data.cmd.substring(start,end)
+                    def cd = getChildDevice("${app.id}-$devId")
+                    if(cd == null) {
+                        log.error "getApi - no child device found for id $devId, was it deleted outside the app?"
+                        return
+                    }
+                    def jsonData = (HashMap) resp.json
+                    cd.dataRefresh(jsonData)
                 } else {
                     log.error "Unhandled Command: '${data.cmd}'"
                 }
             }
         } else if(resp.getStatus() == 401) {
-            apiGet("${data.cmd}")
+            log.error "getApi - 401 Unauthorized for ${data.cmd}, check API credentials"
+        } else {
+            log.error "getApi - unexpected response ${resp.getStatus()} for ${data.cmd}"
         }
     } catch (Exception e) {
         log.error "getApi - $e.message"        
@@ -239,6 +247,7 @@ def getApi(resp, data){
 // End API
 
 void createChildDev(devId, devType, devName, devLoc){
+    def cd
     if(!this.getChildDevice("${app.id}-$devId"))
         cd = addChildDevice("thebearmay", "Air Things Device", "${app.id}-$devId", [name: "${devName}", isComponent: true, deviceId:"$devId", label:"$devName"])
     else
@@ -275,7 +284,7 @@ void intialize() {
 }
 
 void uninstalled(){
-    chdList = getChildDevices()
+    def chdList = getChildDevices()
     chdList.each{
         deleteChildDevice(it.getDeviceNetworkId())
     }
